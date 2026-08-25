@@ -63,6 +63,9 @@ export class GameWorld {
   private siegeExpires = new Map<string, { player?: number; bot?: number }>();
   private maChaoCapturedAt = new Map<string, number>();
   private bonusMoveUntil = 0;
+  /** Xung phong là MỘT nước thêm, không phải sáu giây miễn hồi lệnh. */
+  private bonusMoveAvailable = false;
+  private questionUsedBonus = false;
 
   constructor(private readonly scene: Scene, _canvas: HTMLCanvasElement) {
     this.createPaperGround();
@@ -95,7 +98,9 @@ export class GameWorld {
     this.applyMaChaoDecay(elapsed);
     if (this.mode === "question" && this.currentQuestion && performance.now() - this.questionOpenedAt > this.currentQuestion.secondsTotal * 1000) this.resolveAnswer(false);
     if (this.mode === "passage" && this.passage && performance.now() - this.passage.startedAt > 1_200_000) this.finalizePassage(true);
-    if (this.mode === "board" && elapsed >= this.botCooldownUntil && this.lastBotDecisionAt !== Math.floor(elapsed)) this.botTakeAction();
+    // Trận đi đồng thời: bot không được đóng băng trong lúc người chơi làm câu, nếu không
+    // mở một câu hỏi là một cách dừng đối thủ vô thời hạn.
+    if ((this.mode === "board" || this.mode === "question") && elapsed >= this.botCooldownUntil && this.lastBotDecisionAt !== Math.floor(elapsed)) this.botTakeAction();
     if (remaining <= 0) this.finishBoard();
     const second = Math.floor(elapsed);
     if (second !== this.lastSnapshotSecond) { this.lastSnapshotSecond = second; this.emit(); }
@@ -123,28 +128,54 @@ export class GameWorld {
       mesh.position.set(world.x, tile.kind === "mountain" ? -0.01 : 0, world.z); mesh.rotation.y = Math.PI / 6;
       const material = new StandardMaterial(`hex-mat-${tile.id}`, this.scene); material.specularColor = Color3.Black(); mesh.material = material;
       this.tileMeshes.set(tile.id, mesh); this.tileMaterials.set(tile.id, material);
-      if (["Hàm Cốc", "Lạc Dương", "Xích Bích", "Kinh Châu", "Nhai Đình", "Kỳ Sơn", "Trường Bản"].includes(tile.name)) this.createTileLabel(tile);
+      // Đặt nhãn cho mọi ô có giá trị hơn một điểm: đó là các ô mà bảng lệnh gọi tên và
+      // người chơi phải tìm được trên quân đồ.
+      if (tile.kind === "fortress" || tile.kind === "pass" || tile.kind === "academy") this.createTileLabel(tile);
     });
   }
 
   private createTileLabel(tile: HexTileState): void {
     const texture = new DynamicTexture(`label-${tile.id}`, { width: 350, height: 64 }, this.scene, true);
-    const ctx = texture.getContext(); ctx.clearRect(0, 0, 350, 64); ctx.fillStyle = "rgba(255,253,249,.9)"; ctx.fillRect(4, 6, 342, 52); ctx.strokeStyle = "#b9aa90"; ctx.lineWidth = 2; ctx.strokeRect(4, 6, 342, 52); texture.drawText(tile.name, 24, 40, "600 24px 'Be Vietnam Pro'", "#22303e", "transparent", true);
-    const label = MeshBuilder.CreatePlane(`label-plane-${tile.id}`, { width: 1.18, height: 0.22 }, this.scene); const world = axialToWorld({ q: tile.q, r: tile.r }, 0.86); label.position.set(world.x, 0.31, world.z + 0.47); label.billboardMode = Mesh.BILLBOARDMODE_ALL; label.isPickable = false;
+    const ctx = texture.getContext(); ctx.clearRect(0, 0, 350, 64); ctx.fillStyle = "rgba(255,253,249,.9)"; ctx.fillRect(4, 6, 342, 52); ctx.strokeStyle = "#b9aa90"; ctx.lineWidth = 2; ctx.strokeRect(4, 6, 342, 52); texture.drawText(tile.name, null, 42, "700 28px 'Be Vietnam Pro'", "#22303e", "transparent", true);
+    const label = MeshBuilder.CreatePlane(`label-plane-${tile.id}`, { width: 1.86, height: 0.34 }, this.scene); const world = axialToWorld({ q: tile.q, r: tile.r }, 0.86); label.position.set(world.x, 0.58, world.z + 0.4); label.billboardMode = Mesh.BILLBOARDMODE_ALL; label.isPickable = false;
     const material = new StandardMaterial(`label-mat-${tile.id}`, this.scene); material.diffuseTexture = texture; material.opacityTexture = texture; material.emissiveColor = COLORS.paper; material.specularColor = Color3.Black(); label.material = material;
   }
 
   private createCommanderPortraits(): void {
-    this.playerPortrait = this.createPortrait("player-general", getGeneral(this.selectedGeneral).portrait, 1.24);
-    this.botPortrait = this.createPortrait("mirror-lu-bu", "/manus-storage/lu-bu-character-portrait_0c41e4fc.png", 1.2);
+    const general = getGeneral(this.selectedGeneral);
+    this.playerPortrait = this.createPortrait("player-general", general.portrait, 1.24, general.name, COLORS[general.accent === "sky" ? "silver" : general.accent === "gold" ? "gold" : general.accent === "jade" ? "jade" : general.accent === "silver" ? "silver" : "fire"]);
+    this.botPortrait = this.createPortrait("mirror-lu-bu", "/manus-storage/lu-bu-character-portrait_0c41e4fc.png", 1.2, "Lữ Bố", COLORS.fire);
     this.placePortraits();
   }
 
-  private createPortrait(name: string, url: string, height: number): Mesh {
+  /**
+   * Con dấu vẽ tại chỗ, dùng làm mặt mặc định của thẻ tướng.
+   * Ảnh chân dung nằm trên hạ tầng lưu trữ của Manus và trả 500 ở mọi môi trường khác,
+   * nên nếu lấy ảnh làm mặt mặc định thì bàn cờ hiện ô ảnh vỡ ngay khi chạy ngoài Manus.
+   */
+  private createSealTexture(name: string, label: string, accent: Color3): DynamicTexture {
+    const texture = new DynamicTexture(name, { width: 256, height: 356 }, this.scene, true);
+    texture.hasAlpha = true;
+    const ctx = texture.getContext();
+    ctx.clearRect(0, 0, 256, 356);
+    ctx.fillStyle = "rgba(255,253,249,0.94)"; ctx.fillRect(26, 58, 204, 240);
+    ctx.strokeStyle = accent.toHexString(); ctx.lineWidth = 6; ctx.strokeRect(26, 58, 204, 240);
+    texture.drawText(label, null, 190, "700 32px 'Be Vietnam Pro'", accent.toHexString(), "transparent", true);
+    return texture;
+  }
+
+  private createPortrait(name: string, url: string, height: number, label: string, accent: Color3): Mesh {
     const mesh = MeshBuilder.CreatePlane(name, { width: height * 0.72, height }, this.scene);
     mesh.billboardMode = Mesh.BILLBOARDMODE_ALL; mesh.isPickable = false;
-    const material = new StandardMaterial(`${name}-mat`, this.scene); const texture = new Texture(url, this.scene, false, true); texture.hasAlpha = true;
-    material.diffuseTexture = texture; material.opacityTexture = texture; material.emissiveColor = COLORS.paper.scale(0.35); material.specularColor = Color3.Black(); mesh.material = material; return mesh;
+    const material = new StandardMaterial(`${name}-mat`, this.scene);
+    material.emissiveColor = COLORS.paper.scale(0.35); material.specularColor = Color3.Black();
+    const seal = this.createSealTexture(`${name}-seal`, label, accent);
+    material.diffuseTexture = seal; material.opacityTexture = seal;
+    // Dựng con dấu trước, chỉ thay bằng ảnh khi ảnh tải xong.
+    const photo: Texture = new Texture(url, this.scene, false, true, undefined, () => {
+      photo.hasAlpha = true; material.diffuseTexture = photo; material.opacityTexture = photo; seal.dispose();
+    }, () => photo.dispose());
+    mesh.material = material; return mesh;
   }
 
   private placePortraits(): void {
@@ -158,6 +189,9 @@ export class GameWorld {
     const tile = this.tileById(id); const source = this.tileById(this.playerTileId); if (!tile || !source || tile.owner === "mountain" || tile.lockedByFog) return;
     const elapsed = this.elapsedBoardSeconds();
     if (tile.owner === "player") {
+      // Ô nhà "đang bị vây" là ô mang dấu vây CỦA ĐỐI THỦ (siegeBot). siegePlayer là dấu
+      // ta để lại trên đất địch, và nó luôn bị xoá khi ta chiếm được — nên đọc nhầm
+      // trường đó khiến Đơn kỵ không bao giờ kích hoạt.
       if (this.selectedGeneral === "zhao-yun" && tile.siegeBot > 0 && tile.id !== this.playerTileId) {
         tile.siegeBot = 0; this.siegeExpires.delete(tile.id); this.playerTileId = tile.id; this.boardTimePenaltySeconds += 15;
         this.playerCooldownUntil = this.elapsedBoardSeconds() + cooldownSeconds(this.playerTileCount(), this.playerVillageCount());
@@ -176,7 +210,7 @@ export class GameWorld {
     if (!action) return;
     if (action.type === "selectGeneral" && this.mode === "board" && !this.generalLocked && !this.pendingAction) {
       this.selectedGeneral = action.generalId; this.playerTileId = this.playerStartingTile(); this.selectedTileId = this.playerTileId;
-      if (this.playerPortrait) this.playerPortrait.dispose(); this.playerPortrait = this.createPortrait("player-general", getGeneral(action.generalId).portrait, 1.24); this.placePortraits();
+      if (this.playerPortrait) this.playerPortrait.dispose(); const picked = getGeneral(action.generalId); this.playerPortrait = this.createPortrait("player-general", picked.portrait, 1.24, picked.name, COLORS[picked.accent === "sky" ? "silver" : picked.accent === "gold" ? "gold" : picked.accent === "jade" ? "jade" : picked.accent === "silver" ? "silver" : "fire"]); this.placePortraits();
       this.message = `${getGeneral(action.generalId).name}: ${getGeneral(action.generalId).strength}`; this.refreshAllTiles(); this.emit(); return;
     }
     if (action.type === "selectTile") { this.selectTile(action.tileId); return; }
@@ -195,13 +229,17 @@ export class GameWorld {
     if (!this.pendingAction) return;
     const pending = this.pendingAction;
     const tile = this.tileById(pending.targetId); if (!tile) return;
-    const seconds = answerWindowSeconds();
+    this.questionUsedBonus = this.bonusMoveAvailable && this.elapsedBoardSeconds() < this.bonusMoveUntil;
+    if (this.questionUsedBonus) this.bonusMoveAvailable = false;
+    const seconds = this.questionUsedBonus ? this.extraCaptureSeconds() : answerWindowSeconds();
     this.pendingAction = null;
     this.currentQuestion = { itemId: String(pending.questionSeed), targetTileId: tile.id, targetName: tile.name, focus: `${TERRAIN_LABEL[tile.kind]} · Bậc đề ${this.tileDifficulty(tile)}`, secondsLeft: seconds, secondsTotal: seconds, rerollsLeft: this.selectedGeneral === "ma-chao" ? 1 : 0 };
     this.questionOpenedAt = performance.now(); this.mode = "question"; this.generalLocked = true; this.addHistory("question", "Câu chiếm ô", `${tile.name}: câu ${seconds} giây từ trọng tài.`); this.emit();
   }
 
   private resolveAnswer(correct: boolean): void {
+    // Mốc của câu đang mở là currentQuestion, không phải pendingAction: openQuestion đã
+    // xoá pendingAction để đóng hộp xác nhận, nên đọc lại nó ở đây là luôn thoát sớm.
     if (!this.currentQuestion) return;
     const tile = this.tileById(this.currentQuestion.targetTileId); if (!tile) return;
     const elapsed = Math.floor((performance.now() - this.questionOpenedAt) / 1000);
@@ -214,13 +252,20 @@ export class GameWorld {
         tile.owner = "player"; tile.siegePlayer = 0; tile.siegeBot = 0; tile.fortifiedBy = general.id === "guan-yu" ? "player" : null; this.playerTileId = tile.id; this.siegeExpires.delete(tile.id);
         if (general.id === "ma-chao") this.maChaoCapturedAt.set(tile.id, this.elapsedBoardSeconds());
         this.addHistory("capture", "Chiếm ô", `${general.name} giữ ${tile.name} sau ${elapsed}s. Giá trị ${tile.pointValue} điểm.`); this.recordAction(tile.name, true, elapsed, tile.pointValue);
-        if (general.id === "zhang-fei" && correct) { this.bonusMoveUntil = this.elapsedBoardSeconds() + 6; this.addHistory("move", "Xung phong", "Câu đầu đúng: Trương Phi có thêm một nước trong 6 giây."); }
+        if (general.id === "zhang-fei" && correct && !this.questionUsedBonus) {
+          this.bonusMoveAvailable = true; this.bonusMoveUntil = this.elapsedBoardSeconds() + this.extraCaptureSeconds();
+          this.addHistory("move", "Xung phong", `Câu đầu đúng: Trương Phi có thêm đúng một nước, cửa sổ ${this.extraCaptureSeconds()} giây.`);
+        }
       }
     } else {
       tile.siegePlayer = Math.min(GAME_CONSTANTS.siegeRequired, tile.siegePlayer + 1); this.siegeExpires.set(tile.id, { ...(this.siegeExpires.get(tile.id) ?? {}), player: this.elapsedBoardSeconds() + GAME_CONSTANTS.siegeDecaySeconds }); this.addHistory("siege", "Dấu vây", `${tile.name} nhận dấu vây ${tile.siegePlayer}/${GAME_CONSTANTS.siegeRequired}. Cần một câu đúng để chiếm; dấu tan sau 60s.`); this.recordAction(tile.name, false, elapsed);
     }
+    this.message = tile.owner === "player"
+      ? `${general.name} giữ ${tile.name}. Chờ hồi lệnh rồi chọn ô kế tiếp.`
+      : `Chưa lấy được ${tile.name}. Dấu vây ${tile.siegePlayer}/${GAME_CONSTANTS.siegeRequired} còn 60 giây.`;
     const multiplier = !correct && general.id === "zhang-fei" ? 2 : 1;
-    this.playerCooldownUntil = this.elapsedBoardSeconds() < this.bonusMoveUntil ? this.elapsedBoardSeconds() : this.elapsedBoardSeconds() + cooldownSeconds(this.playerTileCount(), this.playerVillageCount(), multiplier);
+    this.playerCooldownUntil = this.elapsedBoardSeconds() + cooldownSeconds(this.playerTileCount(), this.playerVillageCount(), multiplier);
+    this.questionUsedBonus = false;
     this.currentQuestion = null; this.pendingAction = null; this.mode = "board"; this.selectedTileId = this.playerTileId; this.placePortraits(); this.refreshAllTiles(); this.emit();
   }
 
@@ -254,16 +299,32 @@ export class GameWorld {
     const bot = this.tileById(this.botTileId); if (!bot) return;
     const candidates = this.tiles.filter((tile) => tile.owner !== "mountain" && tile.owner !== "bot" && !tile.lockedByFog && hexDistance({ q: bot.q, r: bot.r }, { q: tile.q, r: tile.r }) <= 1);
     const target = candidates.sort((a, b) => (a.owner === "player" ? -1 : 1) - (b.owner === "player" ? -1 : 1))[0];
-    if (!target) { this.botCooldownUntil = this.elapsedBoardSeconds() + cooldownSeconds(this.botTileCount(), this.botVillageCount()); return; }
+    if (!target) { this.botCooldownUntil = this.elapsedBoardSeconds() + this.botAnswerSeconds() + cooldownSeconds(this.botTileCount(), this.botVillageCount()); return; }
     const botCorrect = (Math.floor(this.elapsedBoardSeconds() * 7) + target.q - target.r) % 4 !== 0;
     if (botCorrect && !(target.fortifiedBy === "player" && target.siegeBot < 1)) { target.owner = "bot"; target.siegeBot = 0; target.fortifiedBy = null; this.siegeExpires.delete(target.id); this.botTileId = target.id; this.addHistory("bot", "Lữ Bố tiến quân", `Đối thủ phản chiếu chiếm ${target.name}.`); }
     else { target.siegeBot += 1; this.siegeExpires.set(target.id, { ...(this.siegeExpires.get(target.id) ?? {}), bot: this.elapsedBoardSeconds() + GAME_CONSTANTS.siegeDecaySeconds }); this.addHistory("bot", target.fortifiedBy === "player" ? "Lữ Bố phá kiên" : "Lữ Bố vây ô", `${target.name} nhận dấu vây của đối thủ.`); }
-    this.botCooldownUntil = this.elapsedBoardSeconds() + cooldownSeconds(this.botTileCount(), this.botVillageCount()); this.lastBotDecisionAt = Math.floor(this.elapsedBoardSeconds()); this.placePortraits(); this.refreshAllTiles(); this.emit();
+    this.botCooldownUntil = this.elapsedBoardSeconds() + this.botAnswerSeconds() + cooldownSeconds(this.botTileCount(), this.botVillageCount()); this.lastBotDecisionAt = Math.floor(this.elapsedBoardSeconds()); this.placePortraits(); this.refreshAllTiles(); this.emit();
+  }
+
+  /**
+   * Thời gian bot "đọc đề". Không có nó thì mỗi nước của bot chỉ tốn hồi lệnh còn mỗi
+   * nước của người chơi tốn hồi lệnh cộng tới mười giây trả lời — bot đi nhanh gấp ba
+   * và ván nào cũng thua đậm. Mục 2 của đặc tả tính một hành động trung bình 12,5 giây
+   * cho CẢ HAI bên, nên bot phải trả đúng khoản đó.
+   */
+  private botAnswerSeconds(): number {
+    const spread = Math.abs(Math.sin(this.elapsedBoardSeconds() * 1.7 + this.botTileCount()));
+    return 5 + spread * 4;
   }
 
   private setHover(id: string | null): void { if (this.hoveredTileId === id) return; this.hoveredTileId = id; this.refreshAllTiles(); this.emit(); }
 
-  private refreshAllTiles(): void { this.tiles.forEach((tile) => this.refreshTile(tile)); this.drawInkRoute(); }
+  private refreshAllTiles(): void {
+    // Tính tầm đi đúng một lần cho cả bàn: gọi trong refreshTile là 91 lần quét 91 ô.
+    const reachable = new Set(this.reachableTileIds());
+    this.tiles.forEach((tile) => this.refreshTile(tile, reachable));
+    this.drawInkRoute();
+  }
 
   private drawInkRoute(): void {
     this.inkRoute?.dispose();
@@ -274,16 +335,24 @@ export class GameWorld {
     this.inkRoute = MeshBuilder.CreateLines("ink-route", { points: [new Vector3(from.x, 0.22, from.z), new Vector3((from.x + to.x) / 2, 0.26, (from.z + to.z) / 2), new Vector3(to.x, 0.22, to.z)] }, this.scene);
     this.inkRoute.color = COLORS.fire;
   }
-  private refreshTile(tile: HexTileState): void {
-    const material = this.tileMaterials.get(tile.id); if (!material) return;
-    const base = tile.kind === "mountain" ? COLORS.mountain : COLORS[tile.kind];
-    material.diffuseColor = base; material.emissiveColor = Color3.Black(); material.alpha = tile.owner === "mountain" ? 0.55 : 0.94;
-    if (tile.owner === "player") material.emissiveColor = COLORS.navy.scale(0.32);
-    if (tile.owner === "bot") material.emissiveColor = COLORS.fire.scale(0.28);
-    if (tile.lockedByFog) material.alpha = 0.34;
-    if (tile.id === this.hoveredTileId) material.emissiveColor = COLORS.gold.scale(0.55);
-    if (tile.id === this.selectedTileId) material.emissiveColor = COLORS.fire.scale(0.52);
-    if (this.reachableTileIds().includes(tile.id)) material.emissiveColor = material.emissiveColor.add(COLORS.gold.scale(0.14));
+  private refreshTile(tile: HexTileState, reachable: Set<string>): void {
+    const material = this.tileMaterials.get(tile.id); const mesh = this.tileMeshes.get(tile.id);
+    if (!material || !mesh) return;
+    const terrain = tile.kind === "mountain" ? COLORS.mountain : COLORS[tile.kind];
+    // Quyền sở hữu nằm ở màu nền VÀ độ cao của ô. Trước đây nó nằm trong emissive, mà
+    // emissive lại bị trạng thái rê chuột, ô đang chọn và ô trong tầm ghi đè — nên nhìn
+    // vào quân đồ không biết được ô nào của ai. Độ cao cũng là tín hiệu không phải màu,
+    // đúng ràng buộc "không dùng màu làm tín hiệu duy nhất".
+    material.diffuseColor = tile.owner === "player" ? Color3.Lerp(terrain, COLORS.navy, 0.62)
+      : tile.owner === "bot" ? Color3.Lerp(terrain, COLORS.fire, 0.54)
+      : terrain;
+    material.alpha = tile.owner === "mountain" ? 0.55 : tile.lockedByFog ? 0.34 : 0.94;
+    mesh.position.y = tile.kind === "mountain" ? -0.01 : tile.owner === "player" ? 0.2 : tile.owner === "bot" ? 0.11 : 0;
+    // Emissive chỉ dành cho tương tác, không dành cho quyền sở hữu.
+    material.emissiveColor = Color3.Black();
+    if (reachable.has(tile.id)) material.emissiveColor = COLORS.gold.scale(0.16);
+    if (tile.id === this.hoveredTileId) material.emissiveColor = COLORS.gold.scale(0.5);
+    if (tile.id === this.selectedTileId) material.emissiveColor = COLORS.fire.scale(0.5);
   }
 
   private applyFog(remaining: number): void {
@@ -305,7 +374,9 @@ export class GameWorld {
 
   private boardSecondsLeft(): number { return Math.max(0, GAME_CONSTANTS.boardSeconds - this.elapsedBoardSeconds()); }
   private elapsedBoardSeconds(): number { const now = this.boardPausedAt ?? performance.now(); return Math.max(0, (now - this.boardStartedAt - this.pausedDurationMs) / 1000 + this.boardTimePenaltySeconds); }
-  private playerCooldownLeft(): number { return this.elapsedBoardSeconds() < this.bonusMoveUntil ? 0 : Math.max(0, this.playerCooldownUntil - this.elapsedBoardSeconds()); }
+  private playerCooldownLeft(): number { return this.bonusMoveSecondsLeft() > 0 ? 0 : Math.max(0, this.playerCooldownUntil - this.elapsedBoardSeconds()); }
+  private bonusMoveSecondsLeft(): number { return this.bonusMoveAvailable ? Math.max(0, this.bonusMoveUntil - this.elapsedBoardSeconds()) : 0; }
+  private extraCaptureSeconds(): number { const effect = getGeneral(this.selectedGeneral).effects.find((item) => item.kind === "extraCaptureInSameAction"); return effect?.kind === "extraCaptureInSameAction" ? effect.seconds : 6; }
   private botCooldownLeft(): number { return Math.max(0, this.botCooldownUntil - this.elapsedBoardSeconds()); }
   private playerTileCount(): number { return this.tiles.filter((tile) => tile.owner === "player").length; }
   private botTileCount(): number { return this.tiles.filter((tile) => tile.owner === "bot").length; }
@@ -323,7 +394,7 @@ export class GameWorld {
     this.battleArchive = [record, ...this.battleArchive].slice(0, 60); persistBattleArchive(this.battleArchive);
   }
   private finishBoard(): void { const player = this.points("player"); const bot = this.points("bot"); const winner = player === bot ? "draw" : player > bot ? "player" : "bot"; this.finished = { winner, reason: `Hết 10 phút: ${player} điểm so với ${bot} điểm.` }; this.addHistory("result", "Kết bàn cờ", this.finished.reason); this.emit(); }
-  private reset(): void { this.tiles = createBoard().map((tile) => ({ ...tile, q: tile.coord.q, r: tile.coord.r, ring: hexDistance(tile.coord, { q: 0, r: 0 }), siegePlayer: 0, siegeBot: 0, fortifiedBy: null, lockedByFog: false })); this.playerTileId = "-4,0"; this.botTileId = "4,0"; this.selectedTileId = null; this.mode = "board"; this.pendingAction = null; this.currentQuestion = null; this.passage = null; this.boardPausedAt = null; this.pausedDurationMs = 0; this.generalLocked = false; this.finished = null; this.siegeExpires.clear(); this.maChaoCapturedAt.clear(); this.bonusMoveUntil = 0; this.lastBotDecisionAt = -1; this.boardStartedAt = performance.now(); this.boardTimePenaltySeconds = 0; this.playerCooldownUntil = 0; this.botCooldownUntil = 1.8; this.gameId = createGameId(); this.history = [{ id: 1, kind: "setup", label: "Ván mới", detail: "Bàn 61 ô đã được dựng lại." }]; this.historySequence = 1; this.refreshAllTiles(); this.placePortraits(); this.emit(); }
+  private reset(): void { this.tiles = createBoard().map((tile) => ({ ...tile, q: tile.coord.q, r: tile.coord.r, ring: hexDistance(tile.coord, { q: 0, r: 0 }), siegePlayer: 0, siegeBot: 0, fortifiedBy: null, lockedByFog: false })); this.playerTileId = "-4,0"; this.botTileId = "4,0"; this.selectedTileId = null; this.mode = "board"; this.pendingAction = null; this.currentQuestion = null; this.passage = null; this.boardPausedAt = null; this.pausedDurationMs = 0; this.generalLocked = false; this.finished = null; this.siegeExpires.clear(); this.maChaoCapturedAt.clear(); this.bonusMoveUntil = 0; this.bonusMoveAvailable = false; this.questionUsedBonus = false; this.lastBotDecisionAt = -1; this.boardStartedAt = performance.now(); this.boardTimePenaltySeconds = 0; this.playerCooldownUntil = 0; this.botCooldownUntil = 1.8; this.gameId = createGameId(); this.history = [{ id: 1, kind: "setup", label: "Ván mới", detail: "Bàn 61 ô đã được dựng lại." }]; this.historySequence = 1; this.refreshAllTiles(); this.placePortraits(); this.emit(); }
 
   private emit(): void {
     const general = getGeneral(this.selectedGeneral); const playerTile = this.tileById(this.playerTileId);
@@ -332,7 +403,7 @@ export class GameWorld {
       playerGeneral: { id: general.id, name: general.name, role: general.role, strength: general.strength, weakness: general.weakness, portrait: general.portrait, accent: general.accent, tileId: this.playerTileId },
       botGeneralName: `Lữ Bố · phản chiếu ${general.name}`,
       tiles: this.tiles.map((tile) => ({ ...tile })), selectedTileId: this.selectedTileId, hoveredTileId: this.hoveredTileId, reachableTileIds: this.reachableTileIds(),
-      boardSecondsLeft: Math.ceil(this.boardSecondsLeft()), playerCooldownLeft: this.playerCooldownLeft(), botCooldownLeft: this.botCooldownLeft(), playerPoints: this.points("player"), botPoints: this.points("bot"), playerTileCount: this.playerTileCount(), botTileCount: this.botTileCount(), bonusMoveSeconds: Math.max(0, this.bonusMoveUntil - this.elapsedBoardSeconds()),
+      boardSecondsLeft: Math.ceil(this.boardSecondsLeft()), playerCooldownLeft: this.playerCooldownLeft(), botCooldownLeft: this.botCooldownLeft(), playerPoints: this.points("player"), botPoints: this.points("bot"), playerTileCount: this.playerTileCount(), botTileCount: this.botTileCount(), bonusMoveSeconds: this.bonusMoveSecondsLeft(),
       message: this.message, pendingAction: this.pendingAction ? { targetName: this.tileById(this.pendingAction.targetId)?.name ?? "", terrain: TERRAIN_LABEL[this.tileById(this.pendingAction.targetId)?.kind ?? "plain"], questionSeconds: answerWindowSeconds(), siegeCount: this.tileById(this.pendingAction.targetId)?.siegePlayer ?? 0 } : null,
       question: this.currentQuestion ? { ...this.currentQuestion, secondsLeft: Math.max(0, this.currentQuestion.secondsTotal - Math.floor((performance.now() - this.questionOpenedAt) / 1000)) } : null,
       passage: this.passage ? { itemId: `passage-${this.passage.index}`, questionNumber: this.passage.index + 1, totalQuestions: 13, secondsLeft: Math.max(0, 1200 - Math.floor((performance.now() - this.passage.startedAt) / 1000)), pointsAtFreeze: { player: this.passage.playerPointsAtFreeze, bot: this.passage.botPointsAtFreeze } } : null,
