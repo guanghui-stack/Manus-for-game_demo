@@ -7,7 +7,9 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import type { Scene } from "@babylonjs/core/scene";
 import { gameAssets } from "@/game/assets";
+import { clearBattleArchiveStorage, createGameId, getBattleArchiveStats, loadBattleArchive, persistBattleArchive } from "@/game/battleArchive";
 import type {
+  BattleRecord,
   CommanderId,
   CommanderState,
   GameAction,
@@ -149,6 +151,8 @@ export class GameWorld {
   private result: GameSnapshot["result"] = null;
   private history: HistoryEntry[] = [{ id: 1, kind: "setup", label: "Quân đồ mở", detail: "Chọn vùng xuất phát hoặc dùng bảng lệnh để bắt đầu." }];
   private historySequence = 1;
+  private gameId = createGameId();
+  private battleArchive = loadBattleArchive();
   private readonly actionListener: (event: Event) => void;
   private demoTimers: number[] = [];
   private lastTimerSecond = -1;
@@ -261,6 +265,15 @@ export class GameWorld {
     if (action.type === "cancelAttack") {
       this.pendingAttack = null;
       this.message = "Lệnh tiến công đã hủy. Hãy điều chỉnh đội hình rồi ra lệnh lại.";
+      this.emit();
+      return;
+    }
+
+    if (action.type === "clearBattleArchive") {
+      this.battleArchive = [];
+      clearBattleArchiveStorage();
+      this.addHistory("setup", "Xóa chiến sử", "Dữ liệu các ván trước đã được xóa khỏi thiết bị này.");
+      this.message = "Chiến sử đã được xóa trên thiết bị này. Ván hiện tại vẫn tiếp tục.";
       this.emit();
       return;
     }
@@ -605,6 +618,7 @@ export class GameWorld {
         ? "Liên hoàn kế: trừ 8 giây khi phân định thời gian."
         : "Không có ưu thế kỹ năng trong lượt này.";
     const reward = victory ? 9 + (directAssault ? 2 : 0) : 0;
+    const resolvedRound = this.round;
 
     if (victory) {
       target.owner = "player";
@@ -628,6 +642,22 @@ export class GameWorld {
       skillApplied,
       reward,
     };
+    const record: BattleRecord = {
+      id: `tran-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      gameId: this.gameId,
+      recordedAt: new Date().toISOString(),
+      round: resolvedRound,
+      commanderName: commander.name,
+      targetName: target.name,
+      victory,
+      playerScore,
+      enemyScore,
+      elapsedSeconds: adjustedElapsed,
+      reward,
+      skillApplied,
+    };
+    this.battleArchive = [record, ...this.battleArchive].slice(0, 60);
+    persistBattleArchive(this.battleArchive);
     this.duel = null;
     this.selectedTerritory = commander.territoryId;
     this.drawAvailableRoutes();
@@ -663,6 +693,7 @@ export class GameWorld {
     this.pendingAttack = null;
     this.hoveredTerritory = null;
     this.result = null;
+    this.gameId = createGameId();
     this.history = [{ id: 1, kind: "setup", label: "Quân đồ đặt lại", detail: "Lữ Bố sẵn sàng phá tuyến tại Hàm Cốc." }];
     this.historySequence = 1;
     this.message = "Bàn quân đồ đã được đặt lại. Lữ Bố sẵn sàng phá tuyến tại Hàm Cốc.";
@@ -740,6 +771,8 @@ export class GameWorld {
         testTitle: READING_TITLE,
       } : null,
       history: this.history.map((item) => ({ ...item })),
+      battleArchive: this.battleArchive.map((item) => ({ ...item })),
+      battleStats: getBattleArchiveStats(this.battleArchive),
       march: this.marching ? {
         commanderName: this.commanders.find((item) => item.id === this.marching?.commanderId)?.name ?? commander.name,
         originName: this.findTerritory(this.marching.fromId).name,

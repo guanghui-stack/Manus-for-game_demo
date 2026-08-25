@@ -20,6 +20,8 @@ const initialState: GameSnapshot = {
   round: 1,
   pendingAttack: null,
   history: [],
+  battleArchive: [],
+  battleStats: { games: 0, battles: 0, victories: 0, winRate: 0, troopsEarned: 0 },
   march: null,
   quiz: null,
   result: null,
@@ -226,9 +228,20 @@ export default function GameCanvas() {
         </section>
       )}
 
-      <aside className="history-panel" aria-label="Nhật ký lượt đi">
-        <div className="history-heading"><span className="caption-seal">Sử</span><div><p className="eyebrow">Nhật ký chiến trường</p><h2>Lượt đi & kết quả</h2></div></div>
-        <ol>{state.history.map((entry) => <li className={`history-${entry.kind}`} key={entry.id}><b>{entry.label}</b><span>{entry.detail}</span></li>)}</ol>
+      <aside className="history-panel" aria-label="Chiến sử nhiều ván">
+        <div className="history-heading"><span className="caption-seal">Sử</span><div><p className="eyebrow">Chiến sử bền</p><h2>Nhiều ván & kết quả</h2></div></div>
+        <div className="archive-stats" aria-label="Thống kê chiến sử">
+          <span><b>{state.battleStats.games}</b>ván</span><span><b>{state.battleStats.battles}</b>trận</span><span><b>{state.battleStats.winRate}%</b>thắng</span><span><b>+{state.battleStats.troopsEarned}</b>quân</span>
+        </div>
+        <details className="battle-archive" open>
+          <summary>Trận đã lưu <small>{state.battleArchive.length}/60</small></summary>
+          {state.battleArchive.length ? <ol>{state.battleArchive.slice(0, 5).map((record) => <li className={record.victory ? "archive-win" : "archive-loss"} key={record.id}><b>{record.victory ? "Thắng" : "Thua"} · {record.targetName}</b><span>{record.commanderName} · {record.playerScore}:{record.enemyScore} · {record.elapsedSeconds}s</span><small>Ván {record.gameId.split("-")[1] ? new Date(Number(record.gameId.split("-")[1])).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }) : "?"} · lượt {record.round}</small></li>)}</ol> : <p className="archive-empty">Chưa có trận nào được lưu. Hoàn tất một chiến thư để bắt đầu chiến sử.</p>}
+          {state.battleArchive.length > 0 && <button className="archive-clear" type="button" onClick={() => send({ type: "clearBattleArchive" })}>Xóa chiến sử</button>}
+        </details>
+        <details className="current-log">
+          <summary>Nhật ký ván hiện tại</summary>
+          <ol>{state.history.map((entry) => <li className={`history-${entry.kind}`} key={entry.id}><b>{entry.label}</b><span>{entry.detail}</span></li>)}</ol>
+        </details>
       </aside>
 
       {(state.mode === "result" || state.mode === "victory") && state.result && (

@@ -27,3 +27,7 @@
 - [x] Trích xuất bài Reading và câu hỏi có đáp án từ tài liệu người dùng cung cấp.
 - [x] Biến một cụm câu hỏi Reading có nguồn thành chiến thư trong game, giữ nội dung đọc được và chấm đúng/sai.
 - [x] Kiểm thử bài Reading mới cùng highlight, xác nhận tiến công và nhật ký lượt.
+- [x] Thiết kế dữ liệu chiến sử bền theo từng ván, gồm kết quả, tướng, vùng, điểm và thời điểm.
+- [x] Lưu/khôi phục chiến sử bằng localStorage, có giới hạn dữ liệu và xử lý dữ liệu hỏng.
+- [x] Hiển thị thống kê nhiều ván, danh sách trận gần đây và nút xóa chiến sử.
+- [x] Kiểm thử dữ liệu còn sau khi tải lại trang, rồi chỉ commit/push lên `guanghui-stack/Manus-for-game_demo`.

@@ -45,6 +45,29 @@ export interface HistoryEntry {
   detail: string;
 }
 
+export interface BattleRecord {
+  id: string;
+  gameId: string;
+  recordedAt: string;
+  round: number;
+  commanderName: string;
+  targetName: string;
+  victory: boolean;
+  playerScore: number;
+  enemyScore: number;
+  elapsedSeconds: number;
+  reward: number;
+  skillApplied: string;
+}
+
+export interface BattleArchiveStats {
+  games: number;
+  battles: number;
+  victories: number;
+  winRate: number;
+  troopsEarned: number;
+}
+
 export interface GameSnapshot {
   mode: GameMode;
   selectedCommander: CommanderId;
@@ -66,6 +89,8 @@ export interface GameSnapshot {
     testTitle: string;
   } | null;
   history: HistoryEntry[];
+  battleArchive: BattleRecord[];
+  battleStats: BattleArchiveStats;
   march: {
     commanderName: string;
     originName: string;
@@ -104,6 +129,7 @@ export type GameAction =
   | { type: "hoverTerritory"; territoryId: TerritoryId | null }
   | { type: "confirmAttack" }
   | { type: "cancelAttack" }
+  | { type: "clearBattleArchive" }
   | { type: "recharge" }
   | { type: "answer"; answerIndex: number }
   | { type: "closeResult" }
