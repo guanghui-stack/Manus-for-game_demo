@@ -10,4 +10,9 @@
 - [x] Không sửa, commit hoặc push bất kỳ nội dung nào vào `guanghui-stack/Stoic-Ielts`; repository này chỉ là nguồn tham khảo read-only.
 - [x] Tạo chân dung thủy mặc nhất quán cho Lữ Bố và Gia Cát Lượng, nền trong suốt và không có chữ.
 - [x] Đặt chân dung mới ở sổ quân nhu và token map, vẫn giữ tín hiệu kỹ năng rõ ràng.
-- [ ] Kiểm tra hiển thị desktop và mobile, rồi chỉ commit/push lên `guanghui-stack/Manus-for-game_demo`.
+- [x] Kiểm tra hiển thị desktop và mobile, rồi chỉ commit/push lên `guanghui-stack/Manus-for-game_demo`.
+- [x] Thêm trạng thái hành quân cho tướng và nội suy nhân vật trên tuyến tiến công.
+- [x] Đồng bộ chuyển động của token, chân dung, dấu tuyến và thông điệp lệnh.
+- [x] Kết nối click lãnh địa với bắt đầu hành quân và thêm chế độ quan sát chuyển động `?march`.
+- [x] Xác minh canvas Babylon render ổn định sau khi nạp tường minh shader mặc định.
+- [x] Kiểm thử hành quân ở desktop và mobile, rồi chỉ commit/push lên `guanghui-stack/Manus-for-game_demo`.

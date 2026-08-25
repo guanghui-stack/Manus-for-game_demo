@@ -17,6 +17,7 @@ const initialState: GameSnapshot = {
   message: "Đang dựng quân đồ…",
   rechargeAvailable: true,
   round: 1,
+  march: null,
   quiz: null,
   result: null,
 };
@@ -151,8 +152,12 @@ export default function GameCanvas() {
 
       {state.mode === "map" && (
         <div className="battle-key" aria-label="Trạng thái nước đi">
-          <span className="attack-stamp">Công</span>
-          <div><b>Phá tuyến đang chờ lệnh</b><small>Hỏa cam chỉ xuất hiện khi nước đi tạo ưu thế.</small></div>
+          <span className="attack-stamp">{state.march ? "Đi" : "Công"}</span>
+          <div>
+            <b>{state.march ? `${state.march.commanderName} đang hành quân` : "Phá tuyến đang chờ lệnh"}</b>
+            <small>{state.march ? `${state.march.originName} → ${state.march.targetName}` : "Hỏa cam chỉ xuất hiện khi nước đi tạo ưu thế."}</small>
+            {state.march && <span className="march-progress" aria-label="Tiến độ hành quân"><i style={{ width: `${Math.round(state.march.progress * 100)}%` }} /></span>}
+          </div>
         </div>
       )}
 

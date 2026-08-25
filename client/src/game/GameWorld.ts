@@ -93,6 +93,14 @@ interface DuelState {
   answers: number[];
 }
 
+interface MarchState {
+  commanderId: CommanderId;
+  fromId: TerritoryId;
+  targetId: TerritoryId;
+  startedAt: number;
+  durationMs: number;
+}
+
 export class GameWorld {
   private territories = INITIAL_TERRITORIES.map((territory) => ({ ...territory, position: { ...territory.position }, neighbors: [...territory.neighbors] }));
   private commanders = INITIAL_COMMANDERS.map((commander) => ({ ...commander }));
@@ -108,10 +116,12 @@ export class GameWorld {
   private rechargeAvailable = true;
   private round = 1;
   private duel: DuelState | null = null;
+  private marching: MarchState | null = null;
   private result: GameSnapshot["result"] = null;
   private readonly actionListener: (event: Event) => void;
   private demoTimers: number[] = [];
   private lastTimerSecond = -1;
+  private lastMarchSignal = -1;
 
   constructor(private readonly scene: Scene, private readonly canvas: HTMLCanvasElement) {
     this.createMap();
@@ -119,16 +129,27 @@ export class GameWorld {
     this.createCommanderMeshes();
     this.actionListener = (event) => this.handleAction((event as CustomEvent<GameAction>).detail);
     window.addEventListener("stoic-game-action", this.actionListener as EventListener);
+    this.scene.onPointerObservable.add((pointerInfo) => {
+      if (pointerInfo.type !== 1) return;
+      const name = pointerInfo.pickInfo?.pickedMesh?.name;
+      if (!name?.startsWith("territory-")) return;
+      this.selectTerritory(name.replace("territory-", "") as TerritoryId);
+    });
     this.selectedTerritory = this.currentCommander().territoryId;
     this.drawAvailableRoutes();
     this.emit();
 
-    if (new URLSearchParams(window.location.search).has("demo")) {
-      this.scheduleDemo();
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("demo") || params.has("march")) {
+      this.scheduleDemo(params.has("march"));
     }
   }
 
   update(): void {
+    if (this.marching) {
+      this.updateMarch();
+      return;
+    }
     if (this.mode !== "quiz" || !this.duel) return;
     const elapsed = this.elapsedSeconds();
     if (elapsed !== this.lastTimerSecond) {
@@ -170,7 +191,7 @@ export class GameWorld {
       return;
     }
 
-    this.beginDuel(id);
+    this.startMarch(id);
   }
 
   private handleAction(action: GameAction): void {
@@ -221,6 +242,7 @@ export class GameWorld {
   private createMap(): void {
     const map = MeshBuilder.CreateGround("rice-paper-map", { width: 18.8, height: 12.2, subdivisions: 1 }, this.scene);
     map.position.y = -0.18;
+    map.isPickable = false;
     const material = new StandardMaterial("rice-paper-material", this.scene);
     material.diffuseColor = COLORS.cream;
     material.emissiveColor = COLORS.cream.scale(0.08);
@@ -310,6 +332,7 @@ export class GameWorld {
       material.emissiveColor = commander.accent === "fire" ? COLORS.fire.scale(0.25) : COLORS.silver.scale(0.22);
       material.specularColor = Color3.Black();
       mesh.material = material;
+      mesh.isPickable = false;
       this.commanderMeshes.set(commander.id, mesh);
       this.updateCommanderVisual(commander.id);
       this.createCommanderPortrait(commander);
@@ -329,6 +352,7 @@ export class GameWorld {
     material.emissiveColor = commander.id === "lu-bu" ? COLORS.fire.scale(0.26) : COLORS.silver.scale(0.26);
     material.specularColor = Color3.Black();
     portrait.material = material;
+    portrait.isPickable = false;
     this.commanderPortraitMeshes.set(commander.id, portrait);
   }
 
@@ -354,10 +378,19 @@ export class GameWorld {
     const mesh = this.commanderMeshes.get(id);
     if (!commander || !mesh) return;
     const territory = this.findTerritory(commander.territoryId);
-    mesh.position.set(territory.position.x, 0.34, territory.position.z);
-    mesh.rotation.y = id === "lu-bu" ? 0.2 : -0.26;
+    this.placeCommander(id, territory.position.x, territory.position.z);
+  }
+
+  private placeCommander(id: CommanderId, x: number, z: number, marchProgress = 0, heading = 0): void {
+    const mesh = this.commanderMeshes.get(id);
+    if (!mesh) return;
+    const bob = marchProgress > 0 ? Math.sin(marchProgress * Math.PI * 5) * 0.065 : 0;
+    const scale = marchProgress > 0 ? 1 + Math.sin(marchProgress * Math.PI * 6) * 0.075 : 1;
+    mesh.position.set(x, 0.34 + bob, z);
+    mesh.rotation.y = marchProgress > 0 ? heading : id === "lu-bu" ? 0.2 : -0.26;
+    mesh.scaling.set(scale, scale, scale);
     const portrait = this.commanderPortraitMeshes.get(id);
-    if (portrait) portrait.position.set(territory.position.x, 1.07, territory.position.z - 0.15);
+    if (portrait) portrait.position.set(x, 1.07 + bob, z - 0.15);
   }
 
   private drawAvailableRoutes(): void {
@@ -393,6 +426,39 @@ export class GameWorld {
         this.routeLines.push(marker);
       });
     });
+  }
+
+  private startMarch(targetId: TerritoryId, durationMs = 1450): void {
+    if (!this.selectedTerritory) return;
+    const commander = this.currentCommander();
+    const origin = this.findTerritory(this.selectedTerritory);
+    const target = this.findTerritory(targetId);
+    this.marching = { commanderId: commander.id, fromId: origin.id, targetId, startedAt: performance.now(), durationMs };
+    this.lastMarchSignal = -1;
+    this.message = `${commander.name} đang hành quân từ ${origin.name} tới ${target.name}. Giữ đội hình, chờ chiến thư.`;
+    this.emit();
+  }
+
+  private updateMarch(): void {
+    if (!this.marching) return;
+    const march = this.marching;
+    const rawProgress = Math.min(1, Math.max(0, (performance.now() - march.startedAt) / march.durationMs));
+    const eased = rawProgress < 0.5 ? 2 * rawProgress * rawProgress : 1 - Math.pow(-2 * rawProgress + 2, 2) / 2;
+    const origin = this.findTerritory(march.fromId);
+    const target = this.findTerritory(march.targetId);
+    const x = origin.position.x + (target.position.x - origin.position.x) * eased;
+    const z = origin.position.z + (target.position.z - origin.position.z) * eased;
+    const heading = Math.atan2(target.position.x - origin.position.x, target.position.z - origin.position.z);
+    this.placeCommander(march.commanderId, x, z, rawProgress, heading);
+    const signal = Math.floor(rawProgress * 12);
+    if (signal !== this.lastMarchSignal) {
+      this.lastMarchSignal = signal;
+      this.emit();
+    }
+    if (rawProgress < 1) return;
+    this.placeCommander(march.commanderId, target.position.x, target.position.z);
+    this.marching = null;
+    this.beginDuel(march.targetId);
   }
 
   private beginDuel(targetId: TerritoryId): void {
@@ -454,6 +520,8 @@ export class GameWorld {
       this.updateCommanderVisual(commander.id);
       this.round += 1;
       this.rechargeAvailable = true;
+    } else {
+      this.updateCommanderVisual(commander.id);
     }
 
     this.result = {
@@ -474,12 +542,13 @@ export class GameWorld {
     this.emit();
   }
 
-  private scheduleDemo(): void {
+  private scheduleDemo(holdMarch = false): void {
     this.demoTimers.push(window.setTimeout(() => this.handleAction({ type: "selectCommander", commanderId: "lu-bu" }), 800));
-    this.demoTimers.push(window.setTimeout(() => this.beginDuel("lac-duong"), 1700));
-    this.demoTimers.push(window.setTimeout(() => this.handleAction({ type: "answer", answerIndex: 0 }), 2700));
-    this.demoTimers.push(window.setTimeout(() => this.handleAction({ type: "answer", answerIndex: 1 }), 3500));
-    this.demoTimers.push(window.setTimeout(() => this.handleAction({ type: "answer", answerIndex: 2 }), 4300));
+    this.demoTimers.push(window.setTimeout(() => this.startMarch("lac-duong", holdMarch ? 6000 : 1450), 1700));
+    if (holdMarch) return;
+    this.demoTimers.push(window.setTimeout(() => this.handleAction({ type: "answer", answerIndex: 0 }), 3500));
+    this.demoTimers.push(window.setTimeout(() => this.handleAction({ type: "answer", answerIndex: 1 }), 4300));
+    this.demoTimers.push(window.setTimeout(() => this.handleAction({ type: "answer", answerIndex: 2 }), 5100));
   }
 
   private reset(): void {
@@ -493,6 +562,7 @@ export class GameWorld {
     this.round = 1;
     this.rechargeAvailable = true;
     this.duel = null;
+    this.marching = null;
     this.result = null;
     this.message = "Bàn quân đồ đã được đặt lại. Lữ Bố sẵn sàng phá tuyến tại Hàm Cốc.";
     this.drawAvailableRoutes();
@@ -555,6 +625,12 @@ export class GameWorld {
       message: this.message,
       rechargeAvailable: this.rechargeAvailable,
       round: this.round,
+      march: this.marching ? {
+        commanderName: this.commanders.find((item) => item.id === this.marching?.commanderId)?.name ?? commander.name,
+        originName: this.findTerritory(this.marching.fromId).name,
+        targetName: this.findTerritory(this.marching.targetId).name,
+        progress: Math.min(1, Math.max(0, (performance.now() - this.marching.startedAt) / this.marching.durationMs)),
+      } : null,
       quiz: currentQuestion && this.duel && target ? {
         question: currentQuestion,
         questionNumber: this.duel.questionIndex + 1,

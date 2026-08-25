@@ -50,6 +50,12 @@ export interface GameSnapshot {
   message: string;
   rechargeAvailable: boolean;
   round: number;
+  march: {
+    commanderName: string;
+    originName: string;
+    targetName: string;
+    progress: number;
+  } | null;
   quiz: {
     question: QuizQuestion;
     questionNumber: number;

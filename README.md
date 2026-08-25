@@ -20,7 +20,7 @@ pnpm install
 pnpm dev
 ```
 
-Sau đó mở `http://localhost:3000/` hoặc `http://localhost:3000/?demo`.
+Sau đó mở `http://localhost:3000/` để chơi trực tiếp bằng cách chọn vùng trên quân đồ; `http://localhost:3000/?demo` để xem chuỗi tự chơi; hoặc `http://localhost:3000/?march` để quan sát trọn vẹn hoạt ảnh hành quân.
 
 ## Kiểm tra
 

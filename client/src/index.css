@@ -103,6 +103,7 @@ button { font: inherit; }
 .battle-key { position: fixed; z-index: 3; top: 112px; left: 28px; display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-left: 3px solid var(--fire); background: rgb(255 253 249 / 0.94); box-shadow: 0 5px 18px rgb(34 48 62 / 0.08); }
 .attack-stamp { display: inline-grid; width: 30px; height: 30px; place-items: center; border: 2px solid var(--fire); color: var(--fire-ink); font-family: var(--font-ui); font-size: 11px; font-weight: 700; }
 .battle-key div { display: grid; gap: 1px; }.battle-key b { color: var(--navy-deep); font-family: var(--font-ui); font-size: 11px; }.battle-key small { color: var(--ink-soft); font-family: var(--font-ui); font-size: 9px; }
+.march-progress { display: block; width: 132px; height: 3px; margin-top: 5px; overflow: hidden; background: var(--line); }.march-progress i { display: block; height: 100%; background: var(--fire); transition: width 110ms linear; }
 
 .duel-sheet, .result-sheet { position: fixed; z-index: 9; inset: 50% auto auto 50%; width: min(620px, calc(100vw - 36px)); transform: translate(-50%, -50%); padding: 28px; border: 1px solid rgb(255 253 249 / 0.22); color: var(--paper); background: var(--navy-deep); box-shadow: var(--shadow-modal); }
 .duel-sheet::before, .result-sheet::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at 8% 5%, rgb(211 178 100 / 0.18), transparent 30%), radial-gradient(circle at 97% 100%, rgb(58 127 196 / 0.12), transparent 32%); }
