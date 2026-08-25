@@ -33,14 +33,14 @@ export const GENERALS: readonly GeneralDefinition[] = [
     strength: "Đơn kỵ: nhảy về ô nhà có dấu vây và xóa dấu đó.",
     weakness: "Mỗi cú nhảy đốt 15 giây đồng hồ bàn cờ.",
     portrait: "/manus-storage/zhao-yun-portrait_f46dd0c7.png",
-    effects: [{ kind: "range", hexes: 2 }, { kind: "jumpToBesiegedHome" }, { kind: "answerSecondsDelta", seconds: 3 }],
+    effects: [{ kind: "range", hexes: 2 }, { kind: "jumpToBesiegedHome" }],
   },
   {
     id: "huang-zhong", name: "Hoàng Trung", role: "Người chứng minh sức bền", accent: "gold",
-    strength: "Lão tướng: tầm đi nở ở phút 3 và 6; phục bàn mở rộng chiếm đất.",
+    strength: "Lão tướng: tầm đi nở ở phút 3 và 6; sức bền phát huy theo nhịp bàn cờ.",
     weakness: "Ba phút đầu không được tuyên chiến và chỉ có tầm một ô.",
     portrait: "/manus-storage/huang-zhong-portrait_a58bb729.png",
-    effects: [{ kind: "rangeSchedule", steps: [{ atSecond: 0, hexes: 1 }, { atSecond: 180, hexes: 2 }, { atSecond: 360, hexes: 3 }] }, { kind: "replayBonusHexes", hexes: 2 }],
+    effects: [{ kind: "rangeSchedule", steps: [{ atSecond: 0, hexes: 1 }, { atSecond: 180, hexes: 2 }, { atSecond: 360, hexes: 3 }] }],
   },
   {
     id: "ma-chao", name: "Mã Siêu", role: "Người phá thế bằng biến hoá", accent: "sky",

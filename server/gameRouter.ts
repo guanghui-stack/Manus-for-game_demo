@@ -29,7 +29,7 @@ export const gameRouter = router({
       return { correct: item.answerIndex === input.answerIndex };
     }),
   nextPassageItem: publicProcedure.input(z.object({ index: z.number().int().min(0).max(12) })).mutation(({ input }) => ({ itemId: `passage-${input.index}`, prompt: PASSAGE_ITEMS[input.index], options: ["TRUE", "FALSE", "NOT GIVEN"] })),
-  gradePassageItem: publicProcedure.input(z.object({ itemId: z.string().regex(/^passage-\d+$/), answerIndex: z.number().int().min(0).max(2) }).strict()).mutation(({ input }) => {
+  gradePassageItem: publicProcedure.input(z.object({ itemId: z.string().regex(/^passage-(?:[0-9]|1[0-2])$/), answerIndex: z.number().int().min(0).max(2) }).strict()).mutation(({ input }) => {
     const index = Number(input.itemId.replace("passage-", ""));
     const keys = [0, 1, 0, 1, 2, 2, 0, 1, 0, 1, 0, 0, 0] as const;
     return { correct: keys[index] === input.answerIndex };

@@ -43,4 +43,12 @@
 - [x] Kiểm thử luật, input và UI desktop/mobile rồi chỉ commit/push lên `guanghui-stack/Manus-for-game_demo`.
 - [x] Tạo E2E passage thử action chọn tướng, chọn hex và xác nhận lệnh; xác nhận state bàn cờ không đổi khi passage đang mở.
 - [x] Kiểm tra UI passage trên mobile sau phiên bản luật Ngũ Tướng.
-- [ ] Đồng bộ luật Ngũ Tướng và passage đã kiểm thử vào `guanghui-stack/Manus-for-game_demo`, xác minh SHA và remote đúng repo.
+- [x] Đồng bộ luật Ngũ Tướng và passage đã kiểm thử vào `guanghui-stack/Manus-for-game_demo`, xác minh SHA và remote đúng repo.
+- [x] Rà soát state machine, luật tướng, cooldown/vây/sương mù và điều kiện kết thúc để tìm lỗi logic.
+- [x] Rà soát trọng tài tRPC, input validation và sự tách biệt học thuật khỏi luật bàn cờ.
+- [x] Bổ sung/sửa test hồi quy cho các lỗi phát hiện được.
+- [x] Chạy lại TypeScript, test và build sau toàn bộ patch audit; lưu bằng chứng pass.
+- [x] Mở rộng test hồi quy cho target câu chiếm ô, passage id, cửa sổ 10 giây và traversal Thiết kỵ.
+- [x] Kiểm tra UI desktop/mobile, TypeScript, test và build rồi chỉ commit/push bản sửa lên `guanghui-stack/Manus-for-game_demo`.
+- [x] Thêm test hồi quy traversal Thiết kỵ: đường thẳng qua đất nhà/trống hợp lệ, qua đất địch không hợp lệ.
+- [ ] Đồng bộ sửa audit cuối vào `guanghui-stack/Manus-for-game_demo`, xác minh SHA và remote đúng repo.

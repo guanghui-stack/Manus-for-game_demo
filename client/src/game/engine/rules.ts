@@ -37,7 +37,17 @@ export function canMoveTo(generalId: GeneralId, from: HexCoord, to: HexCoord, el
   return straight?.kind === "straightLineOnly" ? isStraightHexLine(from, to) : true;
 }
 
-export function answerWindowSeconds(generalId: GeneralId): number {
-  const effect = getGeneral(generalId).effects.find((item) => item.kind === "answerSecondsDelta");
-  return GAME_CONSTANTS.answerSeconds + (effect?.kind === "answerSecondsDelta" ? effect.seconds : 0);
+export function canTraverseRoute(generalId: GeneralId, from: HexCoord, to: HexCoord, ownerAt: (coord: HexCoord) => "player" | "bot" | "neutral" | "mountain" | undefined): boolean {
+  if (generalId !== "ma-chao") return true;
+  const distance = hexDistance(from, to);
+  if (distance <= 1 || !isStraightHexLine(from, to)) return true;
+  const stepQ = (to.q - from.q) / distance;
+  const stepR = (to.r - from.r) / distance;
+  for (let step = 1; step < distance; step += 1) {
+    const owner = ownerAt({ q: from.q + stepQ * step, r: from.r + stepR * step });
+    if (owner !== "player" && owner !== "neutral") return false;
+  }
+  return true;
 }
+
+export function answerWindowSeconds(): number { return GAME_CONSTANTS.answerSeconds; }

@@ -23,5 +23,6 @@ describe("game board referee", () => {
     const caller = gameRouter.createCaller(ctx);
     await expect(caller.gradePassageItem({ itemId: "passage-0", answerIndex: 0, boardState: { general: "zhang-fei", ownedTiles: 61, cooldown: 0 } } as never)).rejects.toThrow();
     await expect(caller.gradePassageItem({ itemId: "passage-0", answerIndex: 0 })).resolves.toEqual({ correct: true });
+    await expect(caller.gradePassageItem({ itemId: "passage-99", answerIndex: 0 })).rejects.toThrow();
   });
 });

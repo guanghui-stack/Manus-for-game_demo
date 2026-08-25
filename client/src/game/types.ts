@@ -36,6 +36,7 @@ export interface BoardQuestionState {
   focus: string;
   secondsLeft: number;
   secondsTotal: number;
+  rerollsLeft: number;
 }
 
 export interface HistoryEntry {
@@ -104,6 +105,7 @@ export type GameAction =
   | { type: "confirmAction" }
   | { type: "cancelAction" }
   | { type: "answerResolved"; correct: boolean }
+  | { type: "rerollQuestion" }
   | { type: "requestPassage" }
   | { type: "passageAnswerResolved"; correct: boolean }
   | { type: "clearBattleArchive" }
