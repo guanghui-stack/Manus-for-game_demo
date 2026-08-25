@@ -38,10 +38,18 @@ export interface QuizQuestion {
   focus: string;
 }
 
+export interface HistoryEntry {
+  id: number;
+  kind: "setup" | "select" | "march" | "quiz" | "result";
+  label: string;
+  detail: string;
+}
+
 export interface GameSnapshot {
   mode: GameMode;
   selectedCommander: CommanderId;
   selectedTerritory: TerritoryId | null;
+  hoveredTerritory: TerritoryId | null;
   availableDestinations: TerritoryId[];
   territories: TerritoryState[];
   commanders: CommanderState[];
@@ -50,6 +58,14 @@ export interface GameSnapshot {
   message: string;
   rechargeAvailable: boolean;
   round: number;
+  pendingAttack: {
+    commanderName: string;
+    originName: string;
+    targetName: string;
+    skill: string;
+    testTitle: string;
+  } | null;
+  history: HistoryEntry[];
   march: {
     commanderName: string;
     originName: string;
@@ -66,6 +82,9 @@ export interface GameSnapshot {
     commanderName: string;
     skillNote: string;
     targetName: string;
+    testTitle: string;
+    sourceLabel: string;
+    passage: string[];
   } | null;
   result: {
     victory: boolean;
@@ -82,6 +101,9 @@ export interface GameSnapshot {
 export type GameAction =
   | { type: "selectCommander"; commanderId: CommanderId }
   | { type: "selectTerritory"; territoryId: TerritoryId }
+  | { type: "hoverTerritory"; territoryId: TerritoryId | null }
+  | { type: "confirmAttack" }
+  | { type: "cancelAttack" }
   | { type: "recharge" }
   | { type: "answer"; answerIndex: number }
   | { type: "closeResult" }

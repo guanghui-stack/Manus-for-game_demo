@@ -13,6 +13,7 @@ import type {
   GameAction,
   GameMode,
   GameSnapshot,
+  HistoryEntry,
   Owner,
   QuizQuestion,
   TerritoryId,
@@ -24,6 +25,7 @@ const COLORS = {
   paper: Color3.FromHexString("#fffdf9"),
   ink: Color3.FromHexString("#22303e"),
   navy: Color3.FromHexString("#1e3a5c"),
+  gold: Color3.FromHexString("#b8862b"),
   fire: Color3.FromHexString("#c2591f"),
   silver: Color3.FromHexString("#7d97ac"),
   line: Color3.FromHexString("#e6ddcb"),
@@ -32,23 +34,43 @@ const COLORS = {
 
 const QUESTIONS: QuizQuestion[] = [
   {
-    prompt: "The project was initiated in 2024.",
-    options: ["It was started in 2024.", "It was delayed in 2024.", "It was rejected in 2024.", "It was copied in 2024."],
+    prompt: "Children’s business cards have been banned in some kindergartens.",
+    options: ["TRUE", "FALSE", "NOT GIVEN"],
     answer: 0,
-    focus: "Paraphrase",
+    focus: "TRUE / FALSE / NOT GIVEN · Question 1",
   },
   {
-    prompt: "The evidence was consistent with earlier findings.",
-    options: ["It contradicted earlier findings.", "It matched earlier findings.", "It replaced earlier findings.", "It ignored earlier findings."],
+    prompt: "It was the Chinese who first began the practice of using business cards.",
+    options: ["TRUE", "FALSE", "NOT GIVEN"],
     answer: 1,
-    focus: "Vocabulary in context",
+    focus: "TRUE / FALSE / NOT GIVEN · Question 2",
   },
   {
-    prompt: "The policy led to a substantial reduction in waste.",
-    options: ["a temporary reduction", "a minor reduction", "a significant reduction", "an unclear reduction"],
-    answer: 2,
-    focus: "Collocation",
+    prompt: "Designing business cards can be a controversial process for some companies.",
+    options: ["TRUE", "FALSE", "NOT GIVEN"],
+    answer: 0,
+    focus: "TRUE / FALSE / NOT GIVEN · Question 3",
   },
+  {
+    prompt: "A famous toy company has boosted their sales by using one type of unusual business card.",
+    options: ["TRUE", "FALSE", "NOT GIVEN"],
+    answer: 2,
+    focus: "TRUE / FALSE / NOT GIVEN · Question 4",
+  },
+  {
+    prompt: "Some business commentators predict a decline in the use of paper business cards.",
+    options: ["TRUE", "FALSE", "NOT GIVEN"],
+    answer: 0,
+    focus: "TRUE / FALSE / NOT GIVEN · Question 5",
+  },
+];
+
+const READING_TITLE = "The Importance of Business Card";
+const READING_SOURCE = "Tài liệu người dùng · Vol5-Reading1to5(done).docx";
+const READING_PASSAGE = [
+  "The ritual may be universal, but the details of business cards and how they are swapped vary across countries. There are kindergarten children who have cards with their own contact details and the job descriptions of parents or grandparents. This practice has become so common in parts of New York that the use of such cards is now prohibited by some of these institutions.",
+  "The Chinese invented calling cards in the 15th century to give people notice that they intended to pay a visit, but these were for social purposes only. In the 17th century, European businesspeople invented a new type of card to act as miniature advertisements, signalling the advent of the business card. Very few things can provoke more heated discussion at a board meeting than the composition of a company’s business cards.",
+  "Employees at one famous toy company give out little plastic figures with their contact details stamped on them. For many business commentators, such gimmicky cards prove that the use of a physical business card is nearly at an end. However, others argue that in a business world full of meetings, it is more important than ever that a card is unique.",
 ];
 
 const INITIAL_TERRITORIES: TerritoryState[] = [
@@ -101,6 +123,11 @@ interface MarchState {
   durationMs: number;
 }
 
+interface PendingAttackState {
+  targetId: TerritoryId;
+  originId: TerritoryId;
+}
+
 export class GameWorld {
   private territories = INITIAL_TERRITORIES.map((territory) => ({ ...territory, position: { ...territory.position }, neighbors: [...territory.neighbors] }));
   private commanders = INITIAL_COMMANDERS.map((commander) => ({ ...commander }));
@@ -111,13 +138,17 @@ export class GameWorld {
   private routeLines: Mesh[] = [];
   private selectedCommander: CommanderId = "lu-bu";
   private selectedTerritory: TerritoryId | null = null;
+  private hoveredTerritory: TerritoryId | null = null;
   private mode: GameMode = "map";
   private message = "Chọn tướng, rồi chọn một vùng của mình để lập tuyến tiến quân.";
   private rechargeAvailable = true;
   private round = 1;
   private duel: DuelState | null = null;
   private marching: MarchState | null = null;
+  private pendingAttack: PendingAttackState | null = null;
   private result: GameSnapshot["result"] = null;
+  private history: HistoryEntry[] = [{ id: 1, kind: "setup", label: "Quân đồ mở", detail: "Chọn vùng xuất phát hoặc dùng bảng lệnh để bắt đầu." }];
+  private historySequence = 1;
   private readonly actionListener: (event: Event) => void;
   private demoTimers: number[] = [];
   private lastTimerSecond = -1;
@@ -130,17 +161,19 @@ export class GameWorld {
     this.actionListener = (event) => this.handleAction((event as CustomEvent<GameAction>).detail);
     window.addEventListener("stoic-game-action", this.actionListener as EventListener);
     this.scene.onPointerObservable.add((pointerInfo) => {
-      if (pointerInfo.type !== 1) return;
       const name = pointerInfo.pickInfo?.pickedMesh?.name;
-      if (!name?.startsWith("territory-")) return;
-      this.selectTerritory(name.replace("territory-", "") as TerritoryId);
+      const territoryId = name?.startsWith("territory-") ? name.replace("territory-", "") as TerritoryId : null;
+      if (pointerInfo.type === 4) this.setHoveredTerritory(territoryId);
+      if (pointerInfo.type === 1 && territoryId) this.selectTerritory(territoryId);
     });
     this.selectedTerritory = this.currentCommander().territoryId;
     this.drawAvailableRoutes();
     this.emit();
 
     const params = new URLSearchParams(window.location.search);
-    if (params.has("demo") || params.has("march")) {
+    if (params.has("confirm")) {
+      this.demoTimers.push(window.setTimeout(() => this.requestAttack("lac-duong"), 900));
+    } else if (params.has("demo") || params.has("march")) {
       this.scheduleDemo(params.has("march"));
     }
   }
@@ -165,14 +198,16 @@ export class GameWorld {
   }
 
   selectTerritory(id: TerritoryId): void {
-    if (this.mode !== "map" || this.marching) return;
+    if (this.mode !== "map" || this.marching || this.pendingAttack) return;
     const territory = this.findTerritory(id);
     const commander = this.currentCommander();
 
     if (territory.owner === "player") {
       this.selectedTerritory = id;
+      this.setHoveredTerritory(id, false);
       this.message = `${territory.name} đã chọn. ${commander.name} có thể tiến đến vùng có dấu mực sáng.`;
       this.drawAvailableRoutes();
+      this.addHistory("select", "Chọn vùng", `${commander.name} tập kết tại ${territory.name}.`);
       this.emit();
       return;
     }
@@ -191,7 +226,7 @@ export class GameWorld {
       return;
     }
 
-    this.startMarch(id);
+    this.requestAttack(id);
   }
 
   private handleAction(action: GameAction): void {
@@ -208,6 +243,25 @@ export class GameWorld {
 
     if (action.type === "selectTerritory") {
       this.selectTerritory(action.territoryId);
+      return;
+    }
+
+    if (action.type === "hoverTerritory") {
+      this.setHoveredTerritory(action.territoryId);
+      return;
+    }
+
+    if (action.type === "confirmAttack" && this.pendingAttack) {
+      const targetId = this.pendingAttack.targetId;
+      this.pendingAttack = null;
+      this.startMarch(targetId);
+      return;
+    }
+
+    if (action.type === "cancelAttack") {
+      this.pendingAttack = null;
+      this.message = "Lệnh tiến công đã hủy. Hãy điều chỉnh đội hình rồi ra lệnh lại.";
+      this.emit();
       return;
     }
 
@@ -366,6 +420,7 @@ export class GameWorld {
     const material = this.territoryMaterials.get(id);
     if (!material) return;
 
+    material.emissiveColor = Color3.Black();
     if (territory.owner === "player") {
       material.diffuseColor = COLORS.navy;
       material.alpha = 0.42;
@@ -376,6 +431,28 @@ export class GameWorld {
       material.diffuseColor = COLORS.cream;
       material.alpha = 0.72;
     }
+    const isSelected = this.selectedTerritory === id;
+    const isReachable = this.selectedTerritory ? this.getReachableDestinations(this.selectedTerritory, this.selectedCommander).includes(id) : false;
+    if (isSelected) {
+      material.emissiveColor = COLORS.gold.scale(0.34);
+      material.alpha = 0.78;
+    } else if (this.hoveredTerritory === id) {
+      material.emissiveColor = territory.owner === "player" ? COLORS.navy.scale(0.48) : COLORS.fire.scale(0.48);
+      material.alpha = 0.82;
+    } else if (isReachable) {
+      material.emissiveColor = COLORS.fire.scale(0.24);
+    }
+  }
+
+  private refreshTerritoryVisuals(): void {
+    this.territories.forEach((territory) => this.updateTerritoryVisual(territory.id));
+  }
+
+  private setHoveredTerritory(id: TerritoryId | null, announce = true): void {
+    if (this.hoveredTerritory === id) return;
+    this.hoveredTerritory = id;
+    this.refreshTerritoryVisuals();
+    if (announce) this.emit();
   }
 
   private updateCommanderVisual(id: CommanderId): void {
@@ -401,6 +478,7 @@ export class GameWorld {
   private drawAvailableRoutes(): void {
     this.routeLines.forEach((line) => line.dispose());
     this.routeLines = [];
+    this.refreshTerritoryVisuals();
     if (!this.selectedTerritory) return;
     const commander = this.currentCommander();
     const origin = this.findTerritory(this.selectedTerritory);
@@ -441,6 +519,16 @@ export class GameWorld {
     this.marching = { commanderId: commander.id, fromId: origin.id, targetId, startedAt: performance.now(), durationMs };
     this.lastMarchSignal = -1;
     this.message = `${commander.name} đang hành quân từ ${origin.name} tới ${target.name}. Giữ đội hình, chờ chiến thư.`;
+    this.addHistory("march", "Hành quân", `${commander.name}: ${origin.name} → ${target.name}.`);
+    this.emit();
+  }
+
+  private requestAttack(targetId: TerritoryId): void {
+    if (!this.selectedTerritory) return;
+    const commander = this.currentCommander();
+    this.pendingAttack = { targetId, originId: this.selectedTerritory };
+    this.message = `Lệnh tiến công tới ${this.findTerritory(targetId).name} đang chờ xác nhận.`;
+    this.addHistory("select", "Lệnh chờ duyệt", `${commander.name} chuẩn bị tiến công ${this.findTerritory(targetId).name}.`);
     this.emit();
   }
 
@@ -480,6 +568,7 @@ export class GameWorld {
     };
     this.lastTimerSecond = -1;
     this.message = `Chiến thư đã mở tại ${target.name}. Số đúng quyết định trước, thời gian quyết định sau.`;
+    this.addHistory("quiz", "Chiến thư mở", `${READING_TITLE} · 5 câu TRUE / FALSE / NOT GIVEN.`);
     this.emit();
   }
 
@@ -544,6 +633,7 @@ export class GameWorld {
     this.drawAvailableRoutes();
     this.mode = this.playerTerritoryCount() >= 4 ? "victory" : "result";
     this.message = victory ? `Chiếm được ${target.name}. Nét mực quân ta đã tiến thêm một vùng.` : `Chưa chiếm được ${target.name}. Hãy luyện binh, rồi mở chiến thư khác.`;
+    this.addHistory("result", victory ? "Tiến công thắng" : "Tiến công thất bại", `${target.name}: ${playerScore} : ${enemyScore}${victory ? ` · +${reward} quân` : ""}.`);
     this.emit();
   }
 
@@ -553,7 +643,9 @@ export class GameWorld {
     if (holdMarch) return;
     this.demoTimers.push(window.setTimeout(() => this.handleAction({ type: "answer", answerIndex: 0 }), 3500));
     this.demoTimers.push(window.setTimeout(() => this.handleAction({ type: "answer", answerIndex: 1 }), 4300));
-    this.demoTimers.push(window.setTimeout(() => this.handleAction({ type: "answer", answerIndex: 2 }), 5100));
+    this.demoTimers.push(window.setTimeout(() => this.handleAction({ type: "answer", answerIndex: 0 }), 5100));
+    this.demoTimers.push(window.setTimeout(() => this.handleAction({ type: "answer", answerIndex: 2 }), 5900));
+    this.demoTimers.push(window.setTimeout(() => this.handleAction({ type: "answer", answerIndex: 0 }), 6700));
   }
 
   private reset(): void {
@@ -568,7 +660,11 @@ export class GameWorld {
     this.rechargeAvailable = true;
     this.duel = null;
     this.marching = null;
+    this.pendingAttack = null;
+    this.hoveredTerritory = null;
     this.result = null;
+    this.history = [{ id: 1, kind: "setup", label: "Quân đồ đặt lại", detail: "Lữ Bố sẵn sàng phá tuyến tại Hàm Cốc." }];
+    this.historySequence = 1;
     this.message = "Bàn quân đồ đã được đặt lại. Lữ Bố sẵn sàng phá tuyến tại Hàm Cốc.";
     this.drawAvailableRoutes();
     this.emit();
@@ -614,6 +710,11 @@ export class GameWorld {
     return this.territories.filter((territory) => territory.owner === "player").length;
   }
 
+  private addHistory(kind: HistoryEntry["kind"], label: string, detail: string): void {
+    this.historySequence += 1;
+    this.history = [{ id: this.historySequence, kind, label, detail }, ...this.history].slice(0, 6);
+  }
+
   private emit(): void {
     const commander = this.currentCommander();
     const currentQuestion = this.duel ? QUESTIONS[this.duel.questionIndex] : null;
@@ -622,6 +723,7 @@ export class GameWorld {
       mode: this.mode,
       selectedCommander: this.selectedCommander,
       selectedTerritory: this.selectedTerritory,
+      hoveredTerritory: this.hoveredTerritory,
       availableDestinations: this.selectedTerritory ? this.getReachableDestinations(this.selectedTerritory, this.selectedCommander) : [],
       territories: this.territories.map((territory) => ({ ...territory, position: { ...territory.position }, neighbors: [...territory.neighbors] })),
       commanders: this.commanders.map((item) => ({ ...item })),
@@ -630,6 +732,14 @@ export class GameWorld {
       message: this.message,
       rechargeAvailable: this.rechargeAvailable,
       round: this.round,
+      pendingAttack: this.pendingAttack ? {
+        commanderName: commander.name,
+        originName: this.findTerritory(this.pendingAttack.originId).name,
+        targetName: this.findTerritory(this.pendingAttack.targetId).name,
+        skill: commander.skill,
+        testTitle: READING_TITLE,
+      } : null,
+      history: this.history.map((item) => ({ ...item })),
       march: this.marching ? {
         commanderName: this.commanders.find((item) => item.id === this.marching?.commanderId)?.name ?? commander.name,
         originName: this.findTerritory(this.marching.fromId).name,
@@ -644,8 +754,11 @@ export class GameWorld {
         enemyElapsedSeconds: this.duel.enemyElapsedSeconds,
         correctSoFar: this.duel.correct,
         commanderName: commander.name,
-        skillNote: commander.id === "lu-bu" ? "Nếu phá tuyến trực diện và đúng cả ba câu: 3 đúng → 4." : "Liên hoàn kế giảm 8 giây khi so thời gian.",
+        skillNote: commander.id === "lu-bu" ? "Nếu phá tuyến trực diện và đúng cả năm câu: 5 đúng → 6." : "Liên hoàn kế giảm 8 giây khi so thời gian.",
         targetName: target.name,
+        testTitle: READING_TITLE,
+        sourceLabel: READING_SOURCE,
+        passage: READING_PASSAGE,
       } : null,
       result: this.result,
     };

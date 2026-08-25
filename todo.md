@@ -20,3 +20,10 @@
 - [x] Sửa input map nếu canvas không nhận hoặc không diễn giải đúng thao tác pointer.
 - [x] Thêm điều khiển dự phòng có thể chạm được nếu WebGL canvas không hỗ trợ pointer trên thiết bị người dùng.
 - [x] Kiểm thử end-to-end desktop/mobile rồi chỉ commit/push lên `guanghui-stack/Manus-for-game_demo`.
+- [x] Thêm trạng thái hover/chạm, vùng chọn và đích tiến công rõ ràng trên map lẫn bảng lệnh.
+- [x] Thêm hộp xác nhận tiến công với tướng, điểm xuất phát, điểm đích và kỹ năng áp dụng.
+- [x] Ghi và hiển thị nhật ký hành quân, chiến thư và kết quả trong phiên chơi hiện tại.
+- [x] Kiểm thử end-to-end ba lớp tương tác rồi chỉ commit/push lên `guanghui-stack/Manus-for-game_demo`.
+- [x] Trích xuất bài Reading và câu hỏi có đáp án từ tài liệu người dùng cung cấp.
+- [x] Biến một cụm câu hỏi Reading có nguồn thành chiến thư trong game, giữ nội dung đọc được và chấm đúng/sai.
+- [x] Kiểm thử bài Reading mới cùng highlight, xác nhận tiến công và nhật ký lượt.

@@ -9,6 +9,7 @@ const initialState: GameSnapshot = {
   mode: "map",
   selectedCommander: "lu-bu",
   selectedTerritory: null,
+  hoveredTerritory: null,
   availableDestinations: [],
   territories: [],
   commanders: [],
@@ -17,6 +18,8 @@ const initialState: GameSnapshot = {
   message: "Đang dựng quân đồ…",
   rechargeAvailable: true,
   round: 1,
+  pendingAttack: null,
+  history: [],
   march: null,
   quiz: null,
   result: null,
@@ -128,7 +131,7 @@ export default function GameCanvas() {
 
         <div className="territory-list" aria-label="Tình hình lãnh địa">
           {state.territories.map((territory) => (
-            <div className={`territory-row owner-${territory.owner} ${state.selectedTerritory === territory.id ? "is-selected" : ""}`} key={territory.id}>
+            <div className={`territory-row owner-${territory.owner} ${state.selectedTerritory === territory.id ? "is-selected" : ""} ${state.hoveredTerritory === territory.id ? "is-hovered" : ""}`} key={territory.id}>
               <span className="territory-dot" aria-hidden="true" />
               <span>{territory.name}</span>
               <small>{ownerLabel(territory.owner)}</small>
@@ -168,7 +171,7 @@ export default function GameCanvas() {
             <p>Vùng xuất phát</p>
             <div className="command-options">
               {state.territories.filter((territory) => territory.owner === "player").map((territory) => (
-                <button key={territory.id} type="button" className={state.selectedTerritory === territory.id ? "is-selected" : ""} disabled={Boolean(state.march)} onClick={() => send({ type: "selectTerritory", territoryId: territory.id })}>{territory.name}</button>
+                <button key={territory.id} type="button" className={state.selectedTerritory === territory.id ? "is-selected" : ""} disabled={Boolean(state.march)} onMouseEnter={() => send({ type: "hoverTerritory", territoryId: territory.id })} onMouseLeave={() => send({ type: "hoverTerritory", territoryId: null })} onFocus={() => send({ type: "hoverTerritory", territoryId: territory.id })} onBlur={() => send({ type: "hoverTerritory", territoryId: null })} onTouchStart={() => send({ type: "hoverTerritory", territoryId: territory.id })} onClick={() => send({ type: "selectTerritory", territoryId: territory.id })}>{territory.name}</button>
               ))}
             </div>
           </div>
@@ -177,7 +180,7 @@ export default function GameCanvas() {
             <div className="command-options command-targets">
               {state.availableDestinations.filter((id) => id !== state.selectedTerritory).map((id) => {
                 const territory = state.territories.find((item) => item.id === id);
-                return territory ? <button key={territory.id} type="button" disabled={Boolean(state.march)} onClick={() => send({ type: "selectTerritory", territoryId: territory.id })}><span>{territory.name}</span><small>{territory.owner === "enemy" ? "Tiến công" : "Mở vùng"}</small></button> : null;
+                return territory ? <button key={territory.id} type="button" className={state.hoveredTerritory === territory.id ? "is-hovered" : ""} disabled={Boolean(state.march)} onMouseEnter={() => send({ type: "hoverTerritory", territoryId: territory.id })} onMouseLeave={() => send({ type: "hoverTerritory", territoryId: null })} onFocus={() => send({ type: "hoverTerritory", territoryId: territory.id })} onBlur={() => send({ type: "hoverTerritory", territoryId: null })} onTouchStart={() => send({ type: "hoverTerritory", territoryId: territory.id })} onClick={() => send({ type: "selectTerritory", territoryId: territory.id })}><span>{territory.name}</span><small>{territory.owner === "enemy" ? "Tiến công" : "Mở vùng"}</small></button> : null;
               })}
             </div>
           </div>
@@ -196,6 +199,10 @@ export default function GameCanvas() {
             <b>{state.quiz.questionNumber}/{state.quiz.totalQuestions}</b>
             <span>Đối thủ {state.quiz.enemyElapsedSeconds}s</span>
           </div>
+          <details className="reading-dossier">
+            <summary><span>Reading dossier</span><b>{state.quiz.testTitle}</b><small>{state.quiz.sourceLabel}</small></summary>
+            <article>{state.quiz.passage.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</article>
+          </details>
           <p className="question-focus">{state.quiz.question.focus}</p>
           <h2>{state.quiz.question.prompt}</h2>
           <div className="answer-grid">
@@ -208,6 +215,21 @@ export default function GameCanvas() {
           <p className="skill-note">{state.quiz.skillNote}</p>
         </section>
       )}
+
+      {state.pendingAttack && (
+        <section className="confirm-sheet" role="dialog" aria-modal="true" aria-label="Xác nhận tiến công">
+          <p className="eyebrow">Lệnh xuất quân</p>
+          <h2>Xác nhận tiến công {state.pendingAttack.targetName}?</h2>
+          <div className="confirm-route"><span>{state.pendingAttack.originName}</span><i>→</i><span>{state.pendingAttack.targetName}</span></div>
+          <p><b>{state.pendingAttack.commanderName}</b> sẽ dùng <b>{state.pendingAttack.skill}</b>. Chiến thư sử dụng bài Reading <em>{state.pendingAttack.testTitle}</em>.</p>
+          <div className="confirm-actions"><button type="button" onClick={() => send({ type: "cancelAttack" })}>Quay lại</button><button type="button" onClick={() => send({ type: "confirmAttack" })}>Phát lệnh tiến công</button></div>
+        </section>
+      )}
+
+      <aside className="history-panel" aria-label="Nhật ký lượt đi">
+        <div className="history-heading"><span className="caption-seal">Sử</span><div><p className="eyebrow">Nhật ký chiến trường</p><h2>Lượt đi & kết quả</h2></div></div>
+        <ol>{state.history.map((entry) => <li className={`history-${entry.kind}`} key={entry.id}><b>{entry.label}</b><span>{entry.detail}</span></li>)}</ol>
+      </aside>
 
       {(state.mode === "result" || state.mode === "victory") && state.result && (
         <section className={`result-sheet ${state.result.victory ? "is-victory" : "is-loss"}`} aria-label="Kết quả tỷ thí">
