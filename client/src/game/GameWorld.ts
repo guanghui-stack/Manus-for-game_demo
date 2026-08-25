@@ -165,7 +165,7 @@ export class GameWorld {
   }
 
   selectTerritory(id: TerritoryId): void {
-    if (this.mode !== "map") return;
+    if (this.mode !== "map" || this.marching) return;
     const territory = this.findTerritory(id);
     const commander = this.currentCommander();
 
@@ -203,6 +203,11 @@ export class GameWorld {
       this.message = `${commander.name}: ${commander.skillDetail}`;
       this.drawAvailableRoutes();
       this.emit();
+      return;
+    }
+
+    if (action.type === "selectTerritory") {
+      this.selectTerritory(action.territoryId);
       return;
     }
 

@@ -81,6 +81,7 @@ export interface GameSnapshot {
 
 export type GameAction =
   | { type: "selectCommander"; commanderId: CommanderId }
+  | { type: "selectTerritory"; territoryId: TerritoryId }
   | { type: "recharge" }
   | { type: "answer"; answerIndex: number }
   | { type: "closeResult" }

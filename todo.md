@@ -16,3 +16,7 @@
 - [x] Kết nối click lãnh địa với bắt đầu hành quân và thêm chế độ quan sát chuyển động `?march`.
 - [x] Xác minh canvas Babylon render ổn định sau khi nạp tường minh shader mặc định.
 - [x] Kiểm thử hành quân ở desktop và mobile, rồi chỉ commit/push lên `guanghui-stack/Manus-for-game_demo`.
+- [x] Tái hiện click chọn vùng, chọn đích, hành quân và trả lời chiến thư trên luồng người chơi thật.
+- [x] Sửa input map nếu canvas không nhận hoặc không diễn giải đúng thao tác pointer.
+- [x] Thêm điều khiển dự phòng có thể chạm được nếu WebGL canvas không hỗ trợ pointer trên thiết bị người dùng.
+- [x] Kiểm thử end-to-end desktop/mobile rồi chỉ commit/push lên `guanghui-stack/Manus-for-game_demo`.

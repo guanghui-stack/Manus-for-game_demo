@@ -148,7 +148,7 @@ export default function GameCanvas() {
         <p>{state.message}</p>
       </section>
 
-      {state.mode === "map" && <div className="map-instruction">Bấm vùng có mực navy để xuất phát, rồi bấm vùng có tuyến hành quân.</div>}
+      {state.mode === "map" && <div className="map-instruction">Chọn vùng trên quân đồ hoặc dùng bảng lệnh bên trái để xuất phát, rồi ra lệnh tiến quân.</div>}
 
       {state.mode === "map" && (
         <div className="battle-key" aria-label="Trạng thái nước đi">
@@ -159,6 +159,30 @@ export default function GameCanvas() {
             {state.march && <span className="march-progress" aria-label="Tiến độ hành quân"><i style={{ width: `${Math.round(state.march.progress * 100)}%` }} /></span>}
           </div>
         </div>
+      )}
+
+      {state.mode === "map" && (
+        <section className="command-panel" aria-label="Bảng lệnh hành quân">
+          <div className="command-heading"><span className="caption-seal">Lệnh</span><div><p className="eyebrow">Điều quân</p><h2>Chọn vùng, rồi tiến quân</h2></div></div>
+          <div className="command-section">
+            <p>Vùng xuất phát</p>
+            <div className="command-options">
+              {state.territories.filter((territory) => territory.owner === "player").map((territory) => (
+                <button key={territory.id} type="button" className={state.selectedTerritory === territory.id ? "is-selected" : ""} disabled={Boolean(state.march)} onClick={() => send({ type: "selectTerritory", territoryId: territory.id })}>{territory.name}</button>
+              ))}
+            </div>
+          </div>
+          <div className="command-section">
+            <p>Điểm đến khả dụng</p>
+            <div className="command-options command-targets">
+              {state.availableDestinations.filter((id) => id !== state.selectedTerritory).map((id) => {
+                const territory = state.territories.find((item) => item.id === id);
+                return territory ? <button key={territory.id} type="button" disabled={Boolean(state.march)} onClick={() => send({ type: "selectTerritory", territoryId: territory.id })}><span>{territory.name}</span><small>{territory.owner === "enemy" ? "Tiến công" : "Mở vùng"}</small></button> : null;
+              })}
+            </div>
+          </div>
+          {state.march && <p className="command-lock">Đội hình đang hành quân, chờ đến điểm đích.</p>}
+        </section>
       )}
 
       {state.mode === "quiz" && state.quiz && (
