@@ -50,4 +50,12 @@ export function canTraverseRoute(generalId: GeneralId, from: HexCoord, to: HexCo
   return true;
 }
 
-export function answerWindowSeconds(): number { return GAME_CONSTANTS.answerSeconds; }
+export function answerWindowSeconds(generalId: GeneralId): number {
+  const effect = getGeneral(generalId).effects.find((item) => item.kind === "answerSecondsDelta");
+  return GAME_CONSTANTS.answerSeconds + (effect?.kind === "answerSecondsDelta" ? effect.seconds : 0);
+}
+
+export function replayBonusHexes(generalId: GeneralId): number {
+  const effect = getGeneral(generalId).effects.find((item) => item.kind === "replayBonusHexes");
+  return effect?.kind === "replayBonusHexes" ? effect.hexes : 1;
+}

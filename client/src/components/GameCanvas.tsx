@@ -75,7 +75,7 @@ export default function GameCanvas() {
 
   const submitAnswer = (answerIndex: number) => {
     if (!item || gradeItem.isPending) return;
-    gradeItem.mutate({ itemId: item.itemId, answerIndex }, { onSuccess: (outcome) => send({ type: "answerResolved", correct: outcome.correct }), onError: () => send({ type: "answerResolved", correct: false }) });
+    gradeItem.mutate({ itemId: item.itemId, answerIndex }, { onSuccess: (outcome) => send({ type: "answerResolved", correct: outcome.correct, focus: item.focus }), onError: () => send({ type: "answerResolved", correct: false, focus: item.focus }) });
   };
   const submitPassageAnswer = (answerIndex: number) => {
     if (!passageItem || gradePassageItem.isPending) return;

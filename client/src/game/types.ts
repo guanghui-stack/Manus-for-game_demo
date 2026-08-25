@@ -104,7 +104,7 @@ export type GameAction =
   | { type: "hoverTile"; tileId: string | null }
   | { type: "confirmAction" }
   | { type: "cancelAction" }
-  | { type: "answerResolved"; correct: boolean }
+  | { type: "answerResolved"; correct: boolean; focus?: string }
   | { type: "rerollQuestion" }
   | { type: "requestPassage" }
   | { type: "passageAnswerResolved"; correct: boolean }

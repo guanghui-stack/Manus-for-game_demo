@@ -11,7 +11,7 @@ import { createBoard, type TileOwner } from "@/game/content/board";
 import { GENERALS, getGeneral, type GeneralId } from "@/game/content/generals";
 import { clearBattleArchiveStorage, createGameId, getBattleArchiveStats, loadBattleArchive, persistBattleArchive } from "@/game/battleArchive";
 import { axialToWorld, hexDistance, hexKey } from "@/game/engine/hex";
-import { answerWindowSeconds, canMoveTo, canTraverseRoute, cooldownSeconds, GAME_CONSTANTS } from "@/game/engine/rules";
+import { answerWindowSeconds, canMoveTo, canTraverseRoute, cooldownSeconds, GAME_CONSTANTS, replayBonusHexes } from "@/game/engine/rules";
 import type { BattleRecord, GameAction, GameSnapshot, HexTileState, HistoryEntry } from "@/game/types";
 
 const COLORS = {
@@ -66,6 +66,9 @@ export class GameWorld {
   /** Xung phong là MỘT nước thêm, không phải sáu giây miễn hồi lệnh. */
   private bonusMoveAvailable = false;
   private questionUsedBonus = false;
+  /** Phục bàn: dạng đề từng làm sai. Làm đúng lại đúng dạng đó thì Hoàng Trung mở rộng đất. */
+  private missedFocuses = new Set<string>();
+  private currentQuestionFocus: string | null = null;
 
   constructor(private readonly scene: Scene, _canvas: HTMLCanvasElement) {
     this.createPaperGround();
@@ -217,7 +220,7 @@ export class GameWorld {
     if (action.type === "hoverTile") { this.setHover(action.tileId); return; }
     if (action.type === "confirmAction" && this.pendingAction) { this.openQuestion(); return; }
     if (action.type === "cancelAction") { this.pendingAction = null; this.selectedTileId = this.playerTileId; this.refreshAllTiles(); this.emit(); return; }
-    if (action.type === "answerResolved" && this.mode === "question") { this.resolveAnswer(action.correct); return; }
+    if (action.type === "answerResolved" && this.mode === "question") { this.currentQuestionFocus = action.focus ?? null; this.resolveAnswer(action.correct); return; }
     if (action.type === "rerollQuestion" && this.mode === "question" && this.currentQuestion?.rerollsLeft) { this.currentQuestion = { ...this.currentQuestion, itemId: String(this.seed++), rerollsLeft: this.currentQuestion.rerollsLeft - 1 }; this.addHistory("question", "Đổi đề", "Mã Siêu đổi đề một lần; đồng hồ 10 giây vẫn tiếp tục."); this.emit(); return; }
     if (action.type === "requestPassage") { this.requestPassage(); return; }
     if (action.type === "passageAnswerResolved" && this.mode === "passage") { this.resolvePassageAnswer(action.correct); return; }
@@ -231,7 +234,7 @@ export class GameWorld {
     const tile = this.tileById(pending.targetId); if (!tile) return;
     this.questionUsedBonus = this.bonusMoveAvailable && this.elapsedBoardSeconds() < this.bonusMoveUntil;
     if (this.questionUsedBonus) this.bonusMoveAvailable = false;
-    const seconds = this.questionUsedBonus ? this.extraCaptureSeconds() : answerWindowSeconds();
+    const seconds = this.questionUsedBonus ? this.extraCaptureSeconds() : answerWindowSeconds(this.selectedGeneral);
     this.pendingAction = null;
     this.currentQuestion = { itemId: String(pending.questionSeed), targetTileId: tile.id, targetName: tile.name, focus: `${TERRAIN_LABEL[tile.kind]} · Bậc đề ${this.tileDifficulty(tile)}`, secondsLeft: seconds, secondsTotal: seconds, rerollsLeft: this.selectedGeneral === "ma-chao" ? 1 : 0 };
     this.questionOpenedAt = performance.now(); this.mode = "question"; this.generalLocked = true; this.addHistory("question", "Câu chiếm ô", `${tile.name}: câu ${seconds} giây từ trọng tài.`); this.emit();
@@ -252,12 +255,18 @@ export class GameWorld {
         tile.owner = "player"; tile.siegePlayer = 0; tile.siegeBot = 0; tile.fortifiedBy = general.id === "guan-yu" ? "player" : null; this.playerTileId = tile.id; this.siegeExpires.delete(tile.id);
         if (general.id === "ma-chao") this.maChaoCapturedAt.set(tile.id, this.elapsedBoardSeconds());
         this.addHistory("capture", "Chiếm ô", `${general.name} giữ ${tile.name} sau ${elapsed}s. Giá trị ${tile.pointValue} điểm.`); this.recordAction(tile.name, true, elapsed, tile.pointValue);
+        if (general.id === "huang-zhong" && correct && this.currentQuestionFocus && this.missedFocuses.has(this.currentQuestionFocus)) {
+          this.missedFocuses.delete(this.currentQuestionFocus);
+          const opened = this.claimAdjacentTiles(tile, replayBonusHexes(general.id) - 1);
+          if (opened.length) this.addHistory("capture", "Phục bàn", `Hoàng Trung từng sai dạng "${this.currentQuestionFocus}" và nay làm đúng: mở thêm ${opened.join(", ")}.`);
+        }
         if (general.id === "zhang-fei" && correct && !this.questionUsedBonus) {
           this.bonusMoveAvailable = true; this.bonusMoveUntil = this.elapsedBoardSeconds() + this.extraCaptureSeconds();
           this.addHistory("move", "Xung phong", `Câu đầu đúng: Trương Phi có thêm đúng một nước, cửa sổ ${this.extraCaptureSeconds()} giây.`);
         }
       }
     } else {
+      if (this.currentQuestionFocus) this.missedFocuses.add(this.currentQuestionFocus);
       tile.siegePlayer = Math.min(GAME_CONSTANTS.siegeRequired, tile.siegePlayer + 1); this.siegeExpires.set(tile.id, { ...(this.siegeExpires.get(tile.id) ?? {}), player: this.elapsedBoardSeconds() + GAME_CONSTANTS.siegeDecaySeconds }); this.addHistory("siege", "Dấu vây", `${tile.name} nhận dấu vây ${tile.siegePlayer}/${GAME_CONSTANTS.siegeRequired}. Cần một câu đúng để chiếm; dấu tan sau 60s.`); this.recordAction(tile.name, false, elapsed);
     }
     this.message = tile.owner === "player"
@@ -265,8 +274,27 @@ export class GameWorld {
       : `Chưa lấy được ${tile.name}. Dấu vây ${tile.siegePlayer}/${GAME_CONSTANTS.siegeRequired} còn 60 giây.`;
     const multiplier = !correct && general.id === "zhang-fei" ? 2 : 1;
     this.playerCooldownUntil = this.elapsedBoardSeconds() + cooldownSeconds(this.playerTileCount(), this.playerVillageCount(), multiplier);
-    this.questionUsedBonus = false;
+    this.questionUsedBonus = false; this.currentQuestionFocus = null;
     this.currentQuestion = null; this.pendingAction = null; this.mode = "board"; this.selectedTileId = this.playerTileId; this.placePortraits(); this.refreshAllTiles(); this.emit();
+  }
+
+  /**
+   * Phục bàn của Hoàng Trung: ngoài ô vừa chiếm, mở thêm các ô kề chưa kiên cố.
+   * Chỉ tác động lên quyền sở hữu ô — không chạm vào chấm điểm, đúng mục 0.
+   */
+  private claimAdjacentTiles(from: HexTileState, count: number): string[] {
+    if (count <= 0) return [];
+    const taken: string[] = [];
+    for (const tile of this.tiles) {
+      if (taken.length >= count) break;
+      if (tile.owner === "player" || tile.owner === "mountain" || tile.lockedByFog) continue;
+      if (tile.fortifiedBy === "bot") continue;
+      if (hexDistance({ q: from.q, r: from.r }, { q: tile.q, r: tile.r }) !== 1) continue;
+      tile.owner = "player"; tile.siegePlayer = 0; tile.siegeBot = 0; tile.fortifiedBy = null;
+      this.siegeExpires.delete(tile.id);
+      taken.push(tile.name);
+    }
+    return taken;
   }
 
   private canChallenge(encounterTileId = this.playerTileId): boolean { return encounterTileId === this.botTileId && this.elapsedBoardSeconds() >= 180 && this.playerTileCount() >= 8 && !this.finished && this.mode === "board"; }
@@ -394,7 +422,7 @@ export class GameWorld {
     this.battleArchive = [record, ...this.battleArchive].slice(0, 60); persistBattleArchive(this.battleArchive);
   }
   private finishBoard(): void { const player = this.points("player"); const bot = this.points("bot"); const winner = player === bot ? "draw" : player > bot ? "player" : "bot"; this.finished = { winner, reason: `Hết 10 phút: ${player} điểm so với ${bot} điểm.` }; this.addHistory("result", "Kết bàn cờ", this.finished.reason); this.emit(); }
-  private reset(): void { this.tiles = createBoard().map((tile) => ({ ...tile, q: tile.coord.q, r: tile.coord.r, ring: hexDistance(tile.coord, { q: 0, r: 0 }), siegePlayer: 0, siegeBot: 0, fortifiedBy: null, lockedByFog: false })); this.playerTileId = "-4,0"; this.botTileId = "4,0"; this.selectedTileId = null; this.mode = "board"; this.pendingAction = null; this.currentQuestion = null; this.passage = null; this.boardPausedAt = null; this.pausedDurationMs = 0; this.generalLocked = false; this.finished = null; this.siegeExpires.clear(); this.maChaoCapturedAt.clear(); this.bonusMoveUntil = 0; this.bonusMoveAvailable = false; this.questionUsedBonus = false; this.lastBotDecisionAt = -1; this.boardStartedAt = performance.now(); this.boardTimePenaltySeconds = 0; this.playerCooldownUntil = 0; this.botCooldownUntil = 1.8; this.gameId = createGameId(); this.history = [{ id: 1, kind: "setup", label: "Ván mới", detail: "Bàn 61 ô đã được dựng lại." }]; this.historySequence = 1; this.refreshAllTiles(); this.placePortraits(); this.emit(); }
+  private reset(): void { this.tiles = createBoard().map((tile) => ({ ...tile, q: tile.coord.q, r: tile.coord.r, ring: hexDistance(tile.coord, { q: 0, r: 0 }), siegePlayer: 0, siegeBot: 0, fortifiedBy: null, lockedByFog: false })); this.playerTileId = "-4,0"; this.botTileId = "4,0"; this.selectedTileId = null; this.mode = "board"; this.pendingAction = null; this.currentQuestion = null; this.passage = null; this.boardPausedAt = null; this.pausedDurationMs = 0; this.generalLocked = false; this.finished = null; this.siegeExpires.clear(); this.maChaoCapturedAt.clear(); this.bonusMoveUntil = 0; this.bonusMoveAvailable = false; this.questionUsedBonus = false; this.missedFocuses.clear(); this.currentQuestionFocus = null; this.lastBotDecisionAt = -1; this.boardStartedAt = performance.now(); this.boardTimePenaltySeconds = 0; this.playerCooldownUntil = 0; this.botCooldownUntil = 1.8; this.gameId = createGameId(); this.history = [{ id: 1, kind: "setup", label: "Ván mới", detail: "Bàn 61 ô đã được dựng lại." }]; this.historySequence = 1; this.refreshAllTiles(); this.placePortraits(); this.emit(); }
 
   private emit(): void {
     const general = getGeneral(this.selectedGeneral); const playerTile = this.tileById(this.playerTileId);
@@ -404,7 +432,7 @@ export class GameWorld {
       botGeneralName: `Lữ Bố · phản chiếu ${general.name}`,
       tiles: this.tiles.map((tile) => ({ ...tile })), selectedTileId: this.selectedTileId, hoveredTileId: this.hoveredTileId, reachableTileIds: this.reachableTileIds(),
       boardSecondsLeft: Math.ceil(this.boardSecondsLeft()), playerCooldownLeft: this.playerCooldownLeft(), botCooldownLeft: this.botCooldownLeft(), playerPoints: this.points("player"), botPoints: this.points("bot"), playerTileCount: this.playerTileCount(), botTileCount: this.botTileCount(), bonusMoveSeconds: this.bonusMoveSecondsLeft(),
-      message: this.message, pendingAction: this.pendingAction ? { targetName: this.tileById(this.pendingAction.targetId)?.name ?? "", terrain: TERRAIN_LABEL[this.tileById(this.pendingAction.targetId)?.kind ?? "plain"], questionSeconds: answerWindowSeconds(), siegeCount: this.tileById(this.pendingAction.targetId)?.siegePlayer ?? 0 } : null,
+      message: this.message, pendingAction: this.pendingAction ? { targetName: this.tileById(this.pendingAction.targetId)?.name ?? "", terrain: TERRAIN_LABEL[this.tileById(this.pendingAction.targetId)?.kind ?? "plain"], questionSeconds: answerWindowSeconds(this.selectedGeneral), siegeCount: this.tileById(this.pendingAction.targetId)?.siegePlayer ?? 0 } : null,
       question: this.currentQuestion ? { ...this.currentQuestion, secondsLeft: Math.max(0, this.currentQuestion.secondsTotal - Math.floor((performance.now() - this.questionOpenedAt) / 1000)) } : null,
       passage: this.passage ? { itemId: `passage-${this.passage.index}`, questionNumber: this.passage.index + 1, totalQuestions: 13, secondsLeft: Math.max(0, 1200 - Math.floor((performance.now() - this.passage.startedAt) / 1000)), pointsAtFreeze: { player: this.passage.playerPointsAtFreeze, bot: this.passage.botPointsAtFreeze } } : null,
       canChallenge: this.canChallenge(), challengeReason: this.challengeReason(),
