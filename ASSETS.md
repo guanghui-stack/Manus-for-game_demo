@@ -11,5 +11,6 @@
 | Lữ Bố portrait | Chân dung tướng cho sổ quân nhu và map | `/manus-storage/lu-bu-character-portrait_0c41e4fc.png` |
 | Gia Cát Lượng portrait | Chân dung tướng cho sổ quân nhu và map | `/manus-storage/zhuge-liang-character-portrait_e031be70.png` |
 | Stoic tactics mark | Logo HUD và favicon | `/manus-storage/stoic-tactics-mark_f9484b54.png` |
+| Ngũ Tướng portraits | Thẻ tướng và billboard hex map | `/manus-storage/zhang-fei-portrait_0f366b2d.png`, `/manus-storage/guan-yu-portrait_e980aebd.png`, `/manus-storage/zhao-yun-portrait_f46dd0c7.png`, `/manus-storage/huang-zhong-portrait_a58bb729.png`, `/manus-storage/ma-chao-portrait_62528d9e.png` |
 
 Tất cả asset dùng URL quản lý WebDev, không được chép file lớn vào project tree.

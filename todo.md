@@ -31,3 +31,16 @@
 - [x] Lưu/khôi phục chiến sử bằng localStorage, có giới hạn dữ liệu và xử lý dữ liệu hỏng.
 - [x] Hiển thị thống kê nhiều ván, danh sách trận gần đây và nút xóa chiến sử.
 - [x] Kiểm thử dữ liệu còn sau khi tải lại trang, rồi chỉ commit/push lên `guanghui-stack/Manus-for-game_demo`.
+- [x] Đọc toàn bộ Luật chơi Ngũ Tướng và lập bảng ràng buộc bất di bất dịch so với prototype hiện có.
+- [x] Ép ranh giới lớp bàn cờ/lớp học thuật bằng kiểu SkillEffect đóng và kiểm tra tự động không chạm điểm học thuật.
+- [x] Thay bàn vùng hiện tại bằng lưới lục giác 61 ô, có địa hình, điểm và quy tắc chiếm đất cốt lõi.
+- [x] Thay danh sách tướng hiện tại bằng năm tướng chơi được cùng kỹ năng chỉ tác động không gian/nhịp.
+- [x] Thêm hồi lệnh, dấu vây và câu 10 giây; giữ passage tách biệt khỏi kỹ năng.
+- [x] Thêm trạng thái passage sinh tử tách biệt, chỉ mở khi đủ điều kiện trận dài và không nhận SkillEffect.
+- [x] Thêm kiểm thử tự động chứng minh trọng tài passage không nhập SkillEffect và không dùng bất kỳ ưu thế bàn cờ nào để chấm học thuật.
+- [x] Kiểm thử API chấm passage chỉ nhận itemId/answerIndex và không đổi theo dữ liệu ưu thế bàn cờ giả lập.
+- [x] Kiểm thử runtime passage khóa các hành động bàn cờ trong suốt phiên thách đấu.
+- [x] Kiểm thử luật, input và UI desktop/mobile rồi chỉ commit/push lên `guanghui-stack/Manus-for-game_demo`.
+- [x] Tạo E2E passage thử action chọn tướng, chọn hex và xác nhận lệnh; xác nhận state bàn cờ không đổi khi passage đang mở.
+- [x] Kiểm tra UI passage trên mobile sau phiên bản luật Ngũ Tướng.
+- [ ] Đồng bộ luật Ngũ Tướng và passage đã kiểm thử vào `guanghui-stack/Manus-for-game_demo`, xác minh SHA và remote đúng repo.

@@ -1,264 +1,95 @@
-// Binh Pháp Giấy Mực: React chỉ là khung ảnh; Babylon sở hữu bàn quân đồ, luật chơi nằm trong GameWorld.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Engine } from "@babylonjs/core/Engines/engine";
-import { gameAssets } from "@/game/assets";
 import { createGameScene, type GameHandle } from "@/game/scene";
-import type { CommanderId, GameAction, GameSnapshot, Owner } from "@/game/types";
+import { GENERALS, type GeneralId } from "@/game/content/generals";
+import { trpc } from "@/lib/trpc";
+import type { GameAction, GameSnapshot } from "@/game/types";
 
-const initialState: GameSnapshot = {
-  mode: "map",
-  selectedCommander: "lu-bu",
-  selectedTerritory: null,
-  hoveredTerritory: null,
-  availableDestinations: [],
-  territories: [],
-  commanders: [],
-  playerTerritories: 0,
-  totalTerritories: 7,
-  message: "Đang dựng quân đồ…",
-  rechargeAvailable: true,
-  round: 1,
-  pendingAttack: null,
-  history: [],
-  battleArchive: [],
-  battleStats: { games: 0, battles: 0, victories: 0, winRate: 0, troopsEarned: 0 },
-  march: null,
-  quiz: null,
-  result: null,
+const EMPTY: GameSnapshot = {
+  mode: "board", selectedGeneral: "zhang-fei", playerGeneral: { id: "zhang-fei", name: "Trương Phi", role: "Người mở trận", strength: "", weakness: "", portrait: "/manus-storage/zhang-fei-portrait_0f366b2d.png", accent: "fire", tileId: "-4,0" }, botGeneralName: "Lữ Bố", tiles: [], selectedTileId: null, hoveredTileId: null, reachableTileIds: [], boardSecondsLeft: 600, playerCooldownLeft: 0, botCooldownLeft: 0, playerPoints: 3, botPoints: 3, playerTileCount: 3, botTileCount: 3, bonusMoveSeconds: 0, message: "Đang dựng bàn cờ…", pendingAction: null, question: null, passage: null, canChallenge: false, challengeReason: "", history: [], battleArchive: [], battleStats: { games: 0, battles: 0, victories: 0, winRate: 0, troopsEarned: 0 }, finished: null,
 };
 
-function ownerLabel(owner: Owner) {
-  if (owner === "player") return "Quân ta";
-  if (owner === "enemy") return "Đối thủ";
-  return "Chưa chiếm";
-}
+const formatClock = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+const terrainLabel: Record<string, string> = { plain: "Đồng", village: "Làng", forest: "Rừng", pass: "Ải", ford: "Bến", fortress: "Thành", academy: "Học", mountain: "Núi" };
 
 export default function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const startedRef = useRef(false);
-  const [state, setState] = useState<GameSnapshot>(initialState);
+  const [state, setState] = useState<GameSnapshot>(EMPTY);
+  const [item, setItem] = useState<{ itemId: string; focus: string; prompt: string; options: string[] } | null>(null);
+  const [passageItem, setPassageItem] = useState<{ itemId: string; prompt: string; options: string[] } | null>(null);
+  const lastQuestionRef = useRef<string | null>(null);
+  const lastPassageRef = useRef<string | null>(null);
+  const nextItem = trpc.game.nextBoardItem.useMutation();
+  const gradeItem = trpc.game.gradeBoardItem.useMutation();
+  const nextPassageItem = trpc.game.nextPassageItem.useMutation();
+  const gradePassageItem = trpc.game.gradePassageItem.useMutation();
+  const send = (action: GameAction) => window.dispatchEvent(new CustomEvent("stoic-game-action", { detail: action }));
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || startedRef.current) return;
     startedRef.current = true;
-
     const engine = new Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, adaptToDeviceRatio: true });
     let handle: GameHandle | null = null;
     const onResize = () => engine.resize();
     const onState = (event: Event) => setState((event as CustomEvent<GameSnapshot>).detail);
-    window.addEventListener("resize", onResize);
-    window.addEventListener("stoic-game-state", onState as EventListener);
-    createGameScene(engine, canvas)
-      .then((gameHandle) => {
-        handle = gameHandle;
-        engine.runRenderLoop(() => gameHandle.scene.render());
-      })
-      .catch((error: unknown) => console.error("Không thể dựng quân đồ Babylon", error));
-
-    return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("stoic-game-state", onState as EventListener);
-      handle?.dispose();
-      engine.dispose();
-      startedRef.current = false;
-    };
+    window.addEventListener("resize", onResize); window.addEventListener("stoic-game-state", onState as EventListener);
+    createGameScene(engine, canvas).then((game) => { handle = game; engine.runRenderLoop(() => game.scene.render()); }).catch((error: unknown) => console.error("Không thể dựng bàn Ngũ Tướng", error));
+    return () => { window.removeEventListener("resize", onResize); window.removeEventListener("stoic-game-state", onState as EventListener); handle?.dispose(); engine.dispose(); startedRef.current = false; };
   }, []);
 
-  const activeCommander = useMemo(
-    () => state.commanders.find((commander) => commander.id === state.selectedCommander),
-    [state.commanders, state.selectedCommander],
-  );
+  useEffect(() => {
+    if (!state.question || lastQuestionRef.current === state.question.itemId) return;
+    lastQuestionRef.current = state.question.itemId; setItem(null);
+    nextItem.mutate({ seed: Number(state.question.itemId) || 0 }, { onSuccess: setItem, onError: () => send({ type: "answerResolved", correct: false }) });
+  }, [state.question, nextItem]);
 
-  const send = (action: GameAction) => window.dispatchEvent(new CustomEvent<GameAction>("stoic-game-action", { detail: action }));
+  useEffect(() => {
+    if (!state.passage || lastPassageRef.current === state.passage.itemId) return;
+    lastPassageRef.current = state.passage.itemId; setPassageItem(null);
+    nextPassageItem.mutate({ index: state.passage.questionNumber - 1 }, { onSuccess: setPassageItem, onError: () => send({ type: "passageAnswerResolved", correct: false }) });
+  }, [state.passage, nextPassageItem]);
 
-  return (
-    <div className="game-shell">
-      <canvas ref={canvasRef} className="game-canvas" aria-label="Bản đồ chiến thuật IELTS" />
+  const chosen = state.tiles.find((tile) => tile.id === state.selectedTileId);
+  const reachable = state.tiles.filter((tile) => state.reachableTileIds.includes(tile.id) && tile.owner !== "player").slice(0, 12);
+  const canAct = state.playerCooldownLeft <= 0.05 && state.mode === "board" && !state.finished;
 
-      <header className="game-header">
-        <div className="brand-lockup">
-          <div className="brand-mark-shell" aria-label="Dấu ấn quân đồ sáu ô">
-            <img className="brand-mark" src={gameAssets.mark} alt="" />
-            <span className="brand-grid" aria-hidden="true"><i /><i /><i /><i /><i /><i /></span>
-            <span className="brand-route" aria-hidden="true" />
-          </div>
-          <div>
-            <p className="eyebrow">Stoic IELTS · Bản thử nghiệm</p>
-            <h1>Binh Pháp Giấy Mực</h1>
-          </div>
-        </div>
-        <div className="header-rule" />
-        <div className="round-readout"><span>Vòng {state.round}</span><strong>{state.playerTerritories}/{state.totalTerritories} vùng</strong></div>
-      </header>
+  const submitAnswer = (answerIndex: number) => {
+    if (!item || gradeItem.isPending) return;
+    gradeItem.mutate({ itemId: item.itemId, answerIndex }, { onSuccess: (outcome) => send({ type: "answerResolved", correct: outcome.correct }), onError: () => send({ type: "answerResolved", correct: false }) });
+  };
+  const submitPassageAnswer = (answerIndex: number) => {
+    if (!passageItem || gradePassageItem.isPending) return;
+    gradePassageItem.mutate({ itemId: passageItem.itemId, answerIndex }, { onSuccess: (outcome) => send({ type: "passageAnswerResolved", correct: outcome.correct }), onError: () => send({ type: "passageAnswerResolved", correct: false }) });
+  };
 
-      <aside className="ledger-panel" aria-label="Sổ quân nhu">
-        <div className="ledger-title">
-          <p className="eyebrow">Sổ quân nhu</p>
-          <h2>Giữ 4 vùng để thắng</h2>
-        </div>
+  return <div className="ngu-tuong-shell">
+    <canvas ref={canvasRef} className="game-canvas" aria-label="Bàn cờ lục giác Ngũ Tướng" />
+    <header className="ng-header"><div className="ng-brand"><span className="ng-seal"><i /><i /><i /><i /><i /><i /></span><div><p>STOIC IELTS · NGŨ TƯỚNG</p><h1>Binh Pháp Giấy Mực</h1></div></div><div className="ng-clock"><span>ĐỒNG HỒ BÀN CỜ</span><b>{formatClock(state.boardSecondsLeft)}</b><small>{state.boardSecondsLeft <= 90 ? "Sương mù đang khép vòng" : "Hai bên đi đồng thời"}</small></div><div className="ng-score"><span>Điểm lãnh thổ</span><b>{state.playerPoints}<i>:</i>{state.botPoints}</b><small>{state.playerTileCount} ô · {state.botTileCount} ô</small></div></header>
 
-        <div className="commander-stack">
-          {state.commanders.map((commander) => (
-            <button
-              key={commander.id}
-              type="button"
-              className={`commander-card ${state.selectedCommander === commander.id ? "is-active" : ""} commander-${commander.id}`}
-              onClick={() => send({ type: "selectCommander", commanderId: commander.id as CommanderId })}
-            >
-              <span className={`commander-portrait commander-portrait-${commander.id}`}>
-                <img src={commander.id === "lu-bu" ? gameAssets.luBuPortrait : gameAssets.zhugeLiangPortrait} alt={`Chân dung ${commander.name}`} />
-              </span>
-              <span className="commander-copy">
-                <span className="commander-name">{commander.name}</span>
-                <span>{commander.epithet}</span>
-              </span>
-              <span className="troop-count"><b>{commander.troops}</b><small>quân</small></span>
-            </button>
-          ))}
-        </div>
+    <aside className="ng-command" aria-label="Điều quân">
+      <div className="ng-panel-head"><span className="ng-caption">Lệnh</span><div><p>Ngũ tướng</p><h2>Chọn người cầm quân</h2></div></div>
+      <div className="ng-general-grid">{GENERALS.map((general) => <button key={general.id} type="button" className={state.selectedGeneral === general.id ? "is-current" : ""} onClick={() => send({ type: "selectGeneral", generalId: general.id })}><img src={general.portrait} alt=""/><span><b>{general.name}</b><small>{general.role}</small></span></button>)}</div>
+      <section className="ng-order"><p>Hồi lệnh của bạn</p><div className="ng-cooldown"><b>{state.bonusMoveSeconds > 0 ? `Xung phong ${state.bonusMoveSeconds.toFixed(1)}s` : state.playerCooldownLeft > 0 ? `${state.playerCooldownLeft.toFixed(1)}s` : "Sẵn sàng"}</b><span style={{ width: `${Math.min(100, state.playerCooldownLeft / 7 * 100)}%` }} /></div><small>Bot Lữ Bố: {state.botCooldownLeft > 0 ? `${state.botCooldownLeft.toFixed(1)}s` : "đang chọn nước"}</small></section>
+      <section className="ng-selected"><p>Hex đang chọn</p><b>{chosen ? chosen.name : "Chọn ô trên quân đồ"}</b><span>{chosen ? `${terrainLabel[chosen.kind]} · ${chosen.pointValue} điểm · vây ${chosen.siegePlayer}/2` : ""}</span></section>
+      <section className="ng-fallback"><p>Điểm đến trong tầm</p><div>{reachable.length ? reachable.map((tile) => <button type="button" key={tile.id} disabled={!canAct} onMouseEnter={() => send({ type: "hoverTile", tileId: tile.id })} onMouseLeave={() => send({ type: "hoverTile", tileId: null })} onClick={() => send({ type: "selectTile", tileId: tile.id })}>{tile.name}<small>{terrainLabel[tile.kind]}</small></button>) : <span>{canAct ? "Rê/chạm các hex sáng trên quân đồ." : "Chờ hồi lệnh để điều quân."}</span>}</div></section>
+    </aside>
 
-        <div className="skill-card">
-          <span className="seal-mini">Kỹ</span>
-          <div>
-            <p>{activeCommander?.skill ?? "Phá tuyến"}</p>
-            <span>{activeCommander?.skillDetail ?? "Đang điểm binh."}</span>
-          </div>
-        </div>
+    <aside className="ng-ledger" aria-label="Sổ quân nhu">
+      <div className="ng-panel-head"><span className="ng-caption">Sổ</span><div><p>Sổ quân nhu</p><h2>{state.playerGeneral.name}</h2></div></div>
+      <img className="ng-general-large" src={state.playerGeneral.portrait} alt={`Chân dung ${state.playerGeneral.name}`}/><p className="ng-role">{state.playerGeneral.role}</p><div className="ng-skill"><b>{state.playerGeneral.strength.split(":")[0]}</b><span>{state.playerGeneral.strength}</span><small>Giá: {state.playerGeneral.weakness}</small></div>
+      <div className="ng-terrain-legend"><p>Địa hình 61 ô</p><span>Đồng/Làng/Rừng: 1</span><span>Ải: 2</span><span>Thành trì: 3</span><span>Học cung hạ bậc đề</span></div>
+      <div className="ng-mirror"><b>Đối thủ</b><span>{state.botGeneralName}</span><small>Lữ Bố không phải tướng chọn được.</small><button type="button" disabled={!state.canChallenge} onClick={() => send({ type: "requestPassage" })}>Thách đấu sinh tử</button><em>{state.challengeReason}</em></div>
+    </aside>
 
-        <button className="training-button" type="button" onClick={() => send({ type: "recharge" })}>
-          <span>+6</span>
-          <b>{state.rechargeAvailable ? "Luyện binh" : "Đã cấp quân"}</b>
-        </button>
+    <section className="ng-status" aria-live="polite"><span className="ng-caption">Chiếu</span><p>{state.message}</p></section>
+    <section className="ng-history" aria-label="Chiến sử"><div className="ng-history-head"><span className="ng-caption">Sử</span><div><p>Chiến sử bền</p><h2>{state.battleStats.games} ván · {state.battleStats.battles} nước</h2></div></div><div className="ng-history-stats"><span><b>{state.battleStats.winRate}%</b> đúng</span><span><b>{state.battleStats.troopsEarned}</b> thắng</span><span><b>{state.history.length}</b> lệnh</span></div><ol>{state.history.slice(0, 4).map((entry) => <li key={entry.id}><b>{entry.label}</b><span>{entry.detail}</span></li>)}</ol>{state.battleArchive.length > 0 && <button type="button" onClick={() => send({ type: "clearBattleArchive" })}>Xóa chiến sử</button>}</section>
 
-        <div className="territory-list" aria-label="Tình hình lãnh địa">
-          {state.territories.map((territory) => (
-            <div className={`territory-row owner-${territory.owner} ${state.selectedTerritory === territory.id ? "is-selected" : ""} ${state.hoveredTerritory === territory.id ? "is-hovered" : ""}`} key={territory.id}>
-              <span className="territory-dot" aria-hidden="true" />
-              <span>{territory.name}</span>
-              <small>{ownerLabel(territory.owner)}</small>
-            </div>
-          ))}
-        </div>
+    {state.pendingAction && <section className="ng-confirm" role="dialog" aria-modal="true"><p>Ra lệnh chiếm ô</p><h2>Xác nhận tiến vào {state.pendingAction.targetName}?</h2><div><span>{state.pendingAction.terrain}</span><b>{state.pendingAction.questionSeconds} giây</b><span>Dấu vây: {state.pendingAction.siegeCount}/2</span></div><small>Kỹ năng chỉ tác động bàn cờ. Trọng tài chấm câu học thuật độc lập.</small><footer><button type="button" onClick={() => send({ type: "cancelAction" })}>Quay lại</button><button type="button" onClick={() => send({ type: "confirmAction" })}>Mở câu chiếm ô</button></footer></section>}
 
-        <div className="faction-legend" aria-label="Chú giải phe">
-          <span><i className="legend-wei" />Ngụy</span>
-          <span><i className="legend-shu" />Thục</span>
-          <span><i className="legend-wu" />Ngô</span>
-        </div>
-      </aside>
-
-      <section className="map-caption" aria-live="polite">
-        <span className="caption-seal">Lệnh</span>
-        <p>{state.message}</p>
-      </section>
-
-      {state.mode === "map" && <div className="map-instruction">Chọn vùng trên quân đồ hoặc dùng bảng lệnh bên trái để xuất phát, rồi ra lệnh tiến quân.</div>}
-
-      {state.mode === "map" && (
-        <div className="battle-key" aria-label="Trạng thái nước đi">
-          <span className="attack-stamp">{state.march ? "Đi" : "Công"}</span>
-          <div>
-            <b>{state.march ? `${state.march.commanderName} đang hành quân` : "Phá tuyến đang chờ lệnh"}</b>
-            <small>{state.march ? `${state.march.originName} → ${state.march.targetName}` : "Hỏa cam chỉ xuất hiện khi nước đi tạo ưu thế."}</small>
-            {state.march && <span className="march-progress" aria-label="Tiến độ hành quân"><i style={{ width: `${Math.round(state.march.progress * 100)}%` }} /></span>}
-          </div>
-        </div>
-      )}
-
-      {state.mode === "map" && (
-        <section className="command-panel" aria-label="Bảng lệnh hành quân">
-          <div className="command-heading"><span className="caption-seal">Lệnh</span><div><p className="eyebrow">Điều quân</p><h2>Chọn vùng, rồi tiến quân</h2></div></div>
-          <div className="command-section">
-            <p>Vùng xuất phát</p>
-            <div className="command-options">
-              {state.territories.filter((territory) => territory.owner === "player").map((territory) => (
-                <button key={territory.id} type="button" className={state.selectedTerritory === territory.id ? "is-selected" : ""} disabled={Boolean(state.march)} onMouseEnter={() => send({ type: "hoverTerritory", territoryId: territory.id })} onMouseLeave={() => send({ type: "hoverTerritory", territoryId: null })} onFocus={() => send({ type: "hoverTerritory", territoryId: territory.id })} onBlur={() => send({ type: "hoverTerritory", territoryId: null })} onTouchStart={() => send({ type: "hoverTerritory", territoryId: territory.id })} onClick={() => send({ type: "selectTerritory", territoryId: territory.id })}>{territory.name}</button>
-              ))}
-            </div>
-          </div>
-          <div className="command-section">
-            <p>Điểm đến khả dụng</p>
-            <div className="command-options command-targets">
-              {state.availableDestinations.filter((id) => id !== state.selectedTerritory).map((id) => {
-                const territory = state.territories.find((item) => item.id === id);
-                return territory ? <button key={territory.id} type="button" className={state.hoveredTerritory === territory.id ? "is-hovered" : ""} disabled={Boolean(state.march)} onMouseEnter={() => send({ type: "hoverTerritory", territoryId: territory.id })} onMouseLeave={() => send({ type: "hoverTerritory", territoryId: null })} onFocus={() => send({ type: "hoverTerritory", territoryId: territory.id })} onBlur={() => send({ type: "hoverTerritory", territoryId: null })} onTouchStart={() => send({ type: "hoverTerritory", territoryId: territory.id })} onClick={() => send({ type: "selectTerritory", territoryId: territory.id })}><span>{territory.name}</span><small>{territory.owner === "enemy" ? "Tiến công" : "Mở vùng"}</small></button> : null;
-              })}
-            </div>
-          </div>
-          {state.march && <p className="command-lock">Đội hình đang hành quân, chờ đến điểm đích.</p>}
-        </section>
-      )}
-
-      {state.mode === "quiz" && state.quiz && (
-        <section className="duel-sheet" aria-label="Chiến thư IELTS">
-          <div className="duel-topline">
-            <span className="eyebrow">Chiến thư tại {state.quiz.targetName}</span>
-            <span className="timer">{String(state.quiz.elapsedSeconds).padStart(2, "0")}s</span>
-          </div>
-          <div className="duel-scoreline">
-            <span>{state.quiz.commanderName}</span>
-            <b>{state.quiz.questionNumber}/{state.quiz.totalQuestions}</b>
-            <span>Đối thủ {state.quiz.enemyElapsedSeconds}s</span>
-          </div>
-          <details className="reading-dossier">
-            <summary><span>Reading dossier</span><b>{state.quiz.testTitle}</b><small>{state.quiz.sourceLabel}</small></summary>
-            <article>{state.quiz.passage.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</article>
-          </details>
-          <p className="question-focus">{state.quiz.question.focus}</p>
-          <h2>{state.quiz.question.prompt}</h2>
-          <div className="answer-grid">
-            {state.quiz.question.options.map((option, index) => (
-              <button key={option} type="button" onClick={() => send({ type: "answer", answerIndex: index })}>
-                <span>{String.fromCharCode(65 + index)}</span>{option}
-              </button>
-            ))}
-          </div>
-          <p className="skill-note">{state.quiz.skillNote}</p>
-        </section>
-      )}
-
-      {state.pendingAttack && (
-        <section className="confirm-sheet" role="dialog" aria-modal="true" aria-label="Xác nhận tiến công">
-          <p className="eyebrow">Lệnh xuất quân</p>
-          <h2>Xác nhận tiến công {state.pendingAttack.targetName}?</h2>
-          <div className="confirm-route"><span>{state.pendingAttack.originName}</span><i>→</i><span>{state.pendingAttack.targetName}</span></div>
-          <p><b>{state.pendingAttack.commanderName}</b> sẽ dùng <b>{state.pendingAttack.skill}</b>. Chiến thư sử dụng bài Reading <em>{state.pendingAttack.testTitle}</em>.</p>
-          <div className="confirm-actions"><button type="button" onClick={() => send({ type: "cancelAttack" })}>Quay lại</button><button type="button" onClick={() => send({ type: "confirmAttack" })}>Phát lệnh tiến công</button></div>
-        </section>
-      )}
-
-      <aside className="history-panel" aria-label="Chiến sử nhiều ván">
-        <div className="history-heading"><span className="caption-seal">Sử</span><div><p className="eyebrow">Chiến sử bền</p><h2>Nhiều ván & kết quả</h2></div></div>
-        <div className="archive-stats" aria-label="Thống kê chiến sử">
-          <span><b>{state.battleStats.games}</b>ván</span><span><b>{state.battleStats.battles}</b>trận</span><span><b>{state.battleStats.winRate}%</b>thắng</span><span><b>+{state.battleStats.troopsEarned}</b>quân</span>
-        </div>
-        <details className="battle-archive" open>
-          <summary>Trận đã lưu <small>{state.battleArchive.length}/60</small></summary>
-          {state.battleArchive.length ? <ol>{state.battleArchive.slice(0, 5).map((record) => <li className={record.victory ? "archive-win" : "archive-loss"} key={record.id}><b>{record.victory ? "Thắng" : "Thua"} · {record.targetName}</b><span>{record.commanderName} · {record.playerScore}:{record.enemyScore} · {record.elapsedSeconds}s</span><small>Ván {record.gameId.split("-")[1] ? new Date(Number(record.gameId.split("-")[1])).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }) : "?"} · lượt {record.round}</small></li>)}</ol> : <p className="archive-empty">Chưa có trận nào được lưu. Hoàn tất một chiến thư để bắt đầu chiến sử.</p>}
-          {state.battleArchive.length > 0 && <button className="archive-clear" type="button" onClick={() => send({ type: "clearBattleArchive" })}>Xóa chiến sử</button>}
-        </details>
-        <details className="current-log">
-          <summary>Nhật ký ván hiện tại</summary>
-          <ol>{state.history.map((entry) => <li className={`history-${entry.kind}`} key={entry.id}><b>{entry.label}</b><span>{entry.detail}</span></li>)}</ol>
-        </details>
-      </aside>
-
-      {(state.mode === "result" || state.mode === "victory") && state.result && (
-        <section className={`result-sheet ${state.result.victory ? "is-victory" : "is-loss"}`} aria-label="Kết quả tỷ thí">
-          <p className="eyebrow">{state.mode === "victory" ? "Quân đồ đã định" : "Quyết toán chiến thư"}</p>
-          <h2>{state.mode === "victory" ? "Nắm quá nửa lãnh địa" : state.result.victory ? `Giữ được ${state.result.territoryName}` : `Chưa lấy được ${state.result.territoryName}`}</h2>
-          <div className="result-stats">
-            <div><span>Chính xác</span><b>{state.result.playerScore} : {state.result.enemyScore}</b></div>
-            <div><span>Thời gian</span><b>{state.result.elapsedSeconds}s : {state.result.enemyElapsedSeconds}s</b></div>
-          </div>
-          <p className="result-skill">{state.result.skillApplied}</p>
-          {state.result.victory && <p className="reward-line">Quân lực bổ sung: <strong>+{state.result.reward}</strong></p>}
-          <button className="result-button" type="button" onClick={() => send({ type: state.mode === "victory" ? "reset" : "closeResult" })}>
-            {state.mode === "victory" ? "Dựng lại quân đồ" : "Trở về bản đồ"}
-          </button>
-        </section>
-      )}
-    </div>
-  );
+    {state.mode === "question" && state.question && <section className="ng-question" aria-label="Câu chiếm ô"><header><span>{state.question.focus}</span><b>{state.question.secondsLeft}s</b></header>{item ? <><h2>{item.prompt}</h2><div>{item.options.map((option, index) => <button key={option} type="button" disabled={gradeItem.isPending} onClick={() => submitAnswer(index)}><i>{String.fromCharCode(65 + index)}</i>{option}</button>)}</div><small>Đáp án chỉ được trọng tài lưu và chấm. Kết quả không thay đổi band hay xếp hạng.</small></> : <p>Trọng tài đang phát câu hỏi…</p>}</section>}
+    {state.mode === "passage" && state.passage && <section className="ng-passage" aria-label="Passage sinh tử"><header><span>PASSAGE SINH TỬ · BÀN CỜ ĐÓNG BĂNG</span><b>{formatClock(state.passage.secondsLeft)}</b></header><div className="ng-passage-score"><span>Câu {state.passage.questionNumber}/{state.passage.totalQuestions}</span><span>Điểm lúc đóng băng {state.passage.pointsAtFreeze.player}:{state.passage.pointsAtFreeze.bot}</span></div>{passageItem ? <><h2>{passageItem.prompt}</h2><div className="ng-passage-options">{passageItem.options.map((option, index) => <button key={option} type="button" disabled={gradePassageItem.isPending} onClick={() => submitPassageAnswer(index)}><i>{String.fromCharCode(65 + index)}</i>{option}</button>)}</div><small>13 câu độc lập · tối đa 20 phút · kỹ năng và địa hình không sửa nội dung hay đáp án.</small></> : <p>Trọng tài đang phát passage…</p>}</section>}
+    {state.finished && <section className="ng-finish" role="dialog" aria-modal="true"><p>Quyết toán bàn cờ</p><h2>{state.finished.winner === "player" ? "Bạn giữ thế thượng phong" : state.finished.winner === "bot" ? "Lữ Bố chiếm ưu thế" : "Bàn cờ hòa"}</h2><span>{state.finished.reason}</span><button type="button" onClick={() => send({ type: "reset" })}>Dựng ván mới</button></section>}
+  </div>;
 }

@@ -1,22 +1,22 @@
 # Game Plan: Binh Pháp Giấy Mực
 
-## Risk Tasks
+## Luật Ngũ Tướng — Risk Tasks
 
-### 1. Bản đồ Babylon có vùng chọn và hành quân
+### 1. Lưới lục giác 61 ô và sương mù cuối trận
 
-- **Why isolated:** Vùng lãnh địa phải vừa đọc được như quân đồ giấy mực vừa nhận thao tác chạm trên canvas, không được che mất HUD.
-- **Approach:** Dùng mặt phẳng bản đồ có texture thủy mặc, bảy vùng dạng lục giác nông để nhận pointer pick, và các tuyến hành quân Babylon Lines. Bản đồ cố định góc nhìn 3/4, không cần pathfinding động.
-- **Verify:** Chọn Lữ Bố, bấm Hàm Cốc rồi Lạc Dương mở được chiến thư; vùng hợp lệ có nhãn và vệt hành quân; vùng không hợp lệ có phản hồi bằng chữ.
+- **Why isolated:** Bàn 61 ô, 30 ô núi và thời điểm khóa vòng ngoài dễ sai quy đổi tọa độ/range khi vừa render vừa nhận input.
+- **Approach:** Tọa độ trục thuần trong `engine/hex.ts`; catalog 61 ô và 30 núi trong `content/board.ts`; Babylon chỉ đọc snapshot để dựng hex và highlight.
+- **Verify:** Có đúng 61 ô chơi, 30 núi ngoài mùa; range/tuyến thẳng đúng tướng; vòng 4 và vòng 3 bị khóa theo đồng hồ mà không làm mất điểm đang giữ.
 
-### 2. Chuyển trạng thái map sang tỷ thí IELTS
+### 2. Biên giới bàn cờ và học thuật
 
-- **Why isolated:** Một lượt phải chuyển ổn định giữa chọn quân, làm ba câu, phân định thắng thua, chiếm lãnh địa và quay lại map.
-- **Approach:** `GameWorld` sở hữu state machine `map → quiz → result → victory`, React HUD chỉ hiển thị snapshot và phát semantic action qua custom event.
-- **Verify:** Chọn đáp án đủ ba lần chuyển sang kết quả; số đúng, thời gian, ưu thế kỹ năng, quân lực và quyền sở hữu vùng được cập nhật mà không reload canvas.
+- **Why isolated:** Kỹ năng tuyệt đối không được đổi logic học thuật và client không được nhận đáp án.
+- **Approach:** `content/skills.ts` là union đóng chỉ có không gian/nhịp; `scripts/check-skill-boundary.mjs` chặn từ khóa học thuật; tRPC server phát item công khai và chấm đáp án.
+- **Verify:** `pnpm test` chạy checker + unit test router; bundle client không có answer key và không kỹ năng nào thay số câu đúng/band/rating.
 
 ## Main Build
 
-Game là một prototype trình duyệt Babylon.js gồm bảy vùng lãnh địa. Người chơi điều khiển Lữ Bố hoặc Gia Cát Lượng, chọn một vùng thuộc mình rồi tiến công vùng kề. Mỗi va chạm mở chiến thư gồm ba câu IELTS ngắn dạng paraphrase, vocabulary và collocation. Thắng dựa trên số câu đúng trước, thời gian sau. Giữ bốn trong bảy vùng để đạt quá nửa lãnh thổ.
+Game là prototype một người đấu bot trên lưới 61 ô chơi được. Người chơi chọn một trong năm tướng; Lữ Bố là đối thủ phản chiếu. Mỗi hành động khi hồi lệnh về không chọn một hex trong tầm, trả lời một câu 10 giây do server chấm, chiếm ô hoặc để lại dấu vây. Điểm thắng theo giá trị ô khi hết mười phút.
 
 - **Assets needed:** texture bản đồ giấy mực 16:9, dấu Lữ Bố, dấu Gia Cát Lượng, logo ấn quân lệnh, ảnh tham chiếu scene.
 - **Verify:**

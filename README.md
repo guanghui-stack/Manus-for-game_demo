@@ -1,17 +1,22 @@
-# Binh Pháp Giấy Mực
+# Binh Pháp Giấy Mực · Ngũ Tướng
 
-Prototype browser game chiến thuật IELTS bằng React 19 và Babylon.js, được thiết kế để tích hợp về sau với Stoic-Ielts. Game hiện độc lập hoàn toàn ở client-side; Stoic-Ielts chỉ là nguồn tham khảo brand guideline, không bị sửa trong quá trình này.
+Prototype game chiến thuật IELTS bằng React, Babylon.js và tRPC. Game dùng lưới **61 ô chơi được** cùng 30 ô núi ngoài mùa; người chơi chọn một trong năm tướng và đấu bot Lữ Bố phản chiếu. Repo `Stoic-Ielts` chỉ là nguồn tham khảo thương hiệu, không bị sửa.
 
-## Vòng lặp chơi
+## Luật cốt lõi
 
-Người chơi chọn **Lữ Bố** hoặc **Gia Cát Lượng**, chọn lãnh địa xuất phát và tiến công một vùng có thể tới. Va chạm mở chiến thư IELTS ba câu dạng paraphrase, vocabulary và collocation. Thắng dựa trên số câu đúng trước, thời gian sau; ai chiếm tối thiểu bốn trong bảy vùng thắng ván.
+| Cơ chế | Triển khai hiện tại |
+|---|---|
+| Hồi lệnh song song | Hai bên tự do ra lệnh khi hồi lệnh về không; số ô tăng làm hồi lệnh chậm hơn, làng giảm hồi lệnh. |
+| Chiếm và vây | Câu đúng chiếm ô; sai để lại dấu vây, tối đa hai dấu và tự tan sau 60 giây. |
+| Điểm | Đồng/làng/rừng/bến/học cung: 1; ải: 2; thành trì: 3; tổng bàn 75 điểm. |
+| Sương mù | 90 giây cuối khóa vòng ngoài; 30 giây cuối khóa thêm một vòng. |
+| Học thuật | Câu chiếm ô và passage được trọng tài server phát/chấm; kỹ năng không can thiệp đáp án, điểm học thuật hay band. |
 
-| Tướng | Kỹ năng | Tác dụng trong prototype |
-|---|---|---|
-| Lữ Bố | Phá tuyến | Khi tiến công trực diện và làm đúng cả ba câu, `3 đúng` được tính thành `4`. |
-| Gia Cát Lượng | Liên hoàn kế | Có thể chuyển hướng qua tối đa một vùng kề và được trừ 8 giây khi so thời gian. |
+Năm tướng chơi được gồm Trương Phi, Quan Vũ, Triệu Vân, Hoàng Trung và Mã Siêu. Kỹ năng chỉ thay đổi tầm đi, nhịp hồi lệnh, vây, phòng thủ hoặc thời gian bàn cờ.
 
-Quân lực tăng qua **Luyện binh** và phần thưởng thắng chiến thư. Chế độ `?demo` tự chạy một cuộc tiến công Lữ Bố để phục vụ kiểm thử trực quan.
+## Passage sinh tử
+
+Sau phút thứ ba và khi giữ từ tám ô, người chơi có thể thách đấu khi áp sát ô Lữ Bố. Passage gồm 13 câu, tối đa 20 phút; bàn cờ đóng băng, phá hòa dùng điểm lãnh thổ lúc đóng băng. Passage không dùng SkillEffect.
 
 ## Chạy cục bộ
 
@@ -20,13 +25,14 @@ pnpm install
 pnpm dev
 ```
 
-Sau đó mở `http://localhost:3000/` để chơi trực tiếp bằng cách chọn vùng trên quân đồ hoặc dùng **Bảng lệnh** bên trái; `http://localhost:3000/?demo` để xem chuỗi tự chơi; `http://localhost:3000/?march` để quan sát trọn vẹn hoạt ảnh hành quân; hoặc `http://localhost:3000/?confirm` để kiểm tra hộp xác nhận tiến công.
+Mở `http://localhost:3000/` để chơi. Mở `http://localhost:3000/?passage` để xem luồng passage trong điều kiện luật được mô phỏng.
 
 ## Kiểm tra
 
 ```bash
 pnpm check
+pnpm test
 pnpm build
 ```
 
-Các tài liệu `PLAN.md`, `STRUCTURE.md`, `MEMORY.md` và `ASSETS.md` lưu lại quyết định, cấu trúc và asset để có thể tiếp tục phát triển hoặc merge vào Stoic-Ielts.
+`pnpm test` chạy cả checker ranh giới SkillEffect, test trọng tài server và test engine 61 ô/75 điểm.

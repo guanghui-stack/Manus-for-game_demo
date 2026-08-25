@@ -1,46 +1,46 @@
-export type CommanderId = "lu-bu" | "zhuge-liang";
+import type { GeneralId } from "@/game/content/generals";
+import type { TileKind, TileOwner } from "@/game/content/board";
 
-export type TerritoryId =
-  | "ham-coc"
-  | "lac-duong"
-  | "hop-phi"
-  | "xich-bich"
-  | "kinh-chau"
-  | "ich-chau"
-  | "nam-trung";
+export type GameMode = "board" | "question" | "passage" | "boardResult";
 
-export type Owner = "player" | "enemy" | "neutral";
-export type GameMode = "map" | "quiz" | "result" | "victory";
-
-export interface TerritoryState {
-  id: TerritoryId;
+export interface HexTileState {
+  id: string;
   name: string;
-  owner: Owner;
-  position: { x: number; z: number };
-  neighbors: TerritoryId[];
+  kind: TileKind;
+  owner: TileOwner;
+  pointValue: number;
+  q: number;
+  r: number;
+  ring: number;
+  siegePlayer: number;
+  siegeBot: number;
+  fortifiedBy: TileOwner | null;
+  lockedByFog: boolean;
 }
 
-export interface CommanderState {
-  id: CommanderId;
+export interface GeneralState {
+  id: GeneralId;
   name: string;
-  epithet: string;
-  skill: string;
-  skillDetail: string;
-  troops: number;
-  territoryId: TerritoryId;
-  accent: "fire" | "silver";
+  role: string;
+  strength: string;
+  weakness: string;
+  portrait: string;
+  accent: "fire" | "jade" | "silver" | "gold" | "sky";
+  tileId: string;
 }
 
-export interface QuizQuestion {
-  prompt: string;
-  options: string[];
-  answer: number;
+export interface BoardQuestionState {
+  itemId: string;
+  targetTileId: string;
+  targetName: string;
   focus: string;
+  secondsLeft: number;
+  secondsTotal: number;
 }
 
 export interface HistoryEntry {
   id: number;
-  kind: "setup" | "select" | "march" | "quiz" | "result";
+  kind: "setup" | "move" | "question" | "capture" | "siege" | "bot" | "result";
   label: string;
   detail: string;
 }
@@ -70,67 +70,41 @@ export interface BattleArchiveStats {
 
 export interface GameSnapshot {
   mode: GameMode;
-  selectedCommander: CommanderId;
-  selectedTerritory: TerritoryId | null;
-  hoveredTerritory: TerritoryId | null;
-  availableDestinations: TerritoryId[];
-  territories: TerritoryState[];
-  commanders: CommanderState[];
-  playerTerritories: number;
-  totalTerritories: number;
+  selectedGeneral: GeneralId;
+  playerGeneral: GeneralState;
+  botGeneralName: string;
+  tiles: HexTileState[];
+  selectedTileId: string | null;
+  hoveredTileId: string | null;
+  reachableTileIds: string[];
+  boardSecondsLeft: number;
+  playerCooldownLeft: number;
+  botCooldownLeft: number;
+  playerPoints: number;
+  botPoints: number;
+  playerTileCount: number;
+  botTileCount: number;
+  bonusMoveSeconds: number;
   message: string;
-  rechargeAvailable: boolean;
-  round: number;
-  pendingAttack: {
-    commanderName: string;
-    originName: string;
-    targetName: string;
-    skill: string;
-    testTitle: string;
-  } | null;
+  pendingAction: { targetName: string; terrain: string; questionSeconds: number; siegeCount: number } | null;
+  question: BoardQuestionState | null;
+  passage: { itemId: string; questionNumber: number; totalQuestions: number; secondsLeft: number; pointsAtFreeze: { player: number; bot: number } } | null;
+  canChallenge: boolean;
+  challengeReason: string;
   history: HistoryEntry[];
   battleArchive: BattleRecord[];
   battleStats: BattleArchiveStats;
-  march: {
-    commanderName: string;
-    originName: string;
-    targetName: string;
-    progress: number;
-  } | null;
-  quiz: {
-    question: QuizQuestion;
-    questionNumber: number;
-    totalQuestions: number;
-    elapsedSeconds: number;
-    enemyElapsedSeconds: number;
-    correctSoFar: number;
-    commanderName: string;
-    skillNote: string;
-    targetName: string;
-    testTitle: string;
-    sourceLabel: string;
-    passage: string[];
-  } | null;
-  result: {
-    victory: boolean;
-    playerScore: number;
-    enemyScore: number;
-    elapsedSeconds: number;
-    enemyElapsedSeconds: number;
-    territoryName: string;
-    skillApplied: string;
-    reward: number;
-  } | null;
+  finished: { winner: "player" | "bot" | "draw"; reason: string } | null;
 }
 
 export type GameAction =
-  | { type: "selectCommander"; commanderId: CommanderId }
-  | { type: "selectTerritory"; territoryId: TerritoryId }
-  | { type: "hoverTerritory"; territoryId: TerritoryId | null }
-  | { type: "confirmAttack" }
-  | { type: "cancelAttack" }
+  | { type: "selectGeneral"; generalId: GeneralId }
+  | { type: "selectTile"; tileId: string }
+  | { type: "hoverTile"; tileId: string | null }
+  | { type: "confirmAction" }
+  | { type: "cancelAction" }
+  | { type: "answerResolved"; correct: boolean }
+  | { type: "requestPassage" }
+  | { type: "passageAnswerResolved"; correct: boolean }
   | { type: "clearBattleArchive" }
-  | { type: "recharge" }
-  | { type: "answer"; answerIndex: number }
-  | { type: "closeResult" }
   | { type: "reset" };

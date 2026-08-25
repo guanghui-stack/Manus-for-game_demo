@@ -2,11 +2,11 @@
 
 | Module | Trách nhiệm |
 |---|---|
-| `components/GameCanvas.tsx` | Vòng đời Engine React, HUD DOM và điều phối action người chơi. |
-| `game/scene.ts` | Tạo scene, camera, ánh sáng và gắn vòng cập nhật. |
-| `game/GameWorld.ts` | Sở hữu state machine, lãnh địa, chọn tướng, tính kỹ năng, tỷ thí, quân lực và cleanup listener. |
-| `game/types.ts` | Kiểu dữ liệu thuần cho snapshot UI, command, territory, commander và quiz. |
-| `game/assets.ts` | Manifest URL của asset sinh cho WebDev. |
+| `game/engine/` | Hex math, cooldown, range và luật thuần; không DOM/Babylon/fetch. |
+| `game/content/` | Catalog tướng, SkillEffect union đóng, catalog 61 ô và hằng số; dữ liệu không chứa code học thuật. |
+| `game/GameWorld.ts` | Adapter render/input: đọc engine state, dựng Babylon và phát semantic event. |
+| `components/GameCanvas.tsx` | Khung React, HUD và gọi tRPC phát/chấm item; không quyết định thắng thua. |
+| `server/gameRouter.ts` | Trọng tài item: chỉ server giữ answer key, client nhận prompt/options và kết quả đúng/sai. |
 
 React là khung ảnh. Babylon là canvas. `GameWorld` là luật chơi. HUD không chứa luật thắng thua, không trực tiếp chạm mesh, và chỉ gửi semantic action như `selectCommander`, `recharge`, `answer`.
 
