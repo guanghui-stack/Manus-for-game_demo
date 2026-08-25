@@ -4,7 +4,9 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import type { Scene } from "@babylonjs/core/scene";
+import { gameAssets } from "@/game/assets";
 import type {
   CommanderId,
   CommanderState,
@@ -97,6 +99,7 @@ export class GameWorld {
   private territoryMeshes = new Map<TerritoryId, Mesh>();
   private territoryMaterials = new Map<TerritoryId, StandardMaterial>();
   private commanderMeshes = new Map<CommanderId, Mesh>();
+  private commanderPortraitMeshes = new Map<CommanderId, Mesh>();
   private routeLines: Mesh[] = [];
   private selectedCommander: CommanderId = "lu-bu";
   private selectedTerritory: TerritoryId | null = null;
@@ -309,7 +312,24 @@ export class GameWorld {
       mesh.material = material;
       this.commanderMeshes.set(commander.id, mesh);
       this.updateCommanderVisual(commander.id);
+      this.createCommanderPortrait(commander);
     });
+  }
+
+  private createCommanderPortrait(commander: CommanderState): void {
+    const portrait = MeshBuilder.CreatePlane(`commander-portrait-${commander.id}`, { width: 1.08, height: 1.44 }, this.scene);
+    const territory = this.findTerritory(commander.territoryId);
+    portrait.position.set(territory.position.x, 1.07, territory.position.z - 0.15);
+    portrait.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    const material = new StandardMaterial(`commander-portrait-material-${commander.id}`, this.scene);
+    const texture = new Texture(commander.id === "lu-bu" ? gameAssets.luBuPortrait : gameAssets.zhugeLiangPortrait, this.scene, false, true);
+    texture.hasAlpha = true;
+    material.diffuseTexture = texture;
+    material.opacityTexture = texture;
+    material.emissiveColor = commander.id === "lu-bu" ? COLORS.fire.scale(0.26) : COLORS.silver.scale(0.26);
+    material.specularColor = Color3.Black();
+    portrait.material = material;
+    this.commanderPortraitMeshes.set(commander.id, portrait);
   }
 
   private updateTerritoryVisual(id: TerritoryId): void {
@@ -336,6 +356,8 @@ export class GameWorld {
     const territory = this.findTerritory(commander.territoryId);
     mesh.position.set(territory.position.x, 0.34, territory.position.z);
     mesh.rotation.y = id === "lu-bu" ? 0.2 : -0.26;
+    const portrait = this.commanderPortraitMeshes.get(id);
+    if (portrait) portrait.position.set(territory.position.x, 1.07, territory.position.z - 0.15);
   }
 
   private drawAvailableRoutes(): void {

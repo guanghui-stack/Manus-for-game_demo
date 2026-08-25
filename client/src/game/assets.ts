@@ -4,5 +4,7 @@ export const gameAssets = {
   map: "/manus-storage/territory-map-inkwash_e2461813.png",
   luBu: "/manus-storage/lu-bu-seal_e0ac64e7.png",
   zhugeLiang: "/manus-storage/zhuge-liang-seal_b6623a54.png",
+  luBuPortrait: "/manus-storage/lu-bu-character-portrait_0c41e4fc.png",
+  zhugeLiangPortrait: "/manus-storage/zhuge-liang-character-portrait_e031be70.png",
   mark: "/manus-storage/stoic-tactics-mark_f9484b54.png",
 } as const;

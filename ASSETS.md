@@ -8,6 +8,8 @@
 | Territory map | Texture nền quân đồ | `/manus-storage/territory-map-inkwash_e2461813.png` |
 | Lữ Bố seal | Token, thẻ tướng và chỉ báo ưu thế trực diện | `/manus-storage/lu-bu-seal_e0ac64e7.png` |
 | Gia Cát Lượng seal | Token, thẻ tướng và chỉ báo tuyến cơ động | `/manus-storage/zhuge-liang-seal_b6623a54.png` |
+| Lữ Bố portrait | Chân dung tướng cho sổ quân nhu và map | `/manus-storage/lu-bu-character-portrait_0c41e4fc.png` |
+| Gia Cát Lượng portrait | Chân dung tướng cho sổ quân nhu và map | `/manus-storage/zhuge-liang-character-portrait_e031be70.png` |
 | Stoic tactics mark | Logo HUD và favicon | `/manus-storage/stoic-tactics-mark_f9484b54.png` |
 
 Tất cả asset dùng URL quản lý WebDev, không được chép file lớn vào project tree.

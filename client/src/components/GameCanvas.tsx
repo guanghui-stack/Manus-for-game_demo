@@ -100,7 +100,9 @@ export default function GameCanvas() {
               className={`commander-card ${state.selectedCommander === commander.id ? "is-active" : ""} commander-${commander.id}`}
               onClick={() => send({ type: "selectCommander", commanderId: commander.id as CommanderId })}
             >
-              <img src={commander.id === "lu-bu" ? gameAssets.luBu : gameAssets.zhugeLiang} alt="" />
+              <span className={`commander-portrait commander-portrait-${commander.id}`}>
+                <img src={commander.id === "lu-bu" ? gameAssets.luBuPortrait : gameAssets.zhugeLiangPortrait} alt={`Chân dung ${commander.name}`} />
+              </span>
               <span className="commander-copy">
                 <span className="commander-name">{commander.name}</span>
                 <span>{commander.epithet}</span>

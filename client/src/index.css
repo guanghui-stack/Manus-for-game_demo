@@ -62,13 +62,16 @@ button { font: inherit; }
 .ledger-title { padding-bottom: 14px; border-bottom: 3px solid var(--gold); }
 .ledger-title h2 { margin: 4px 0 0; color: var(--navy-deep); font-family: var(--font-display); font-size: 23px; line-height: 1.1; }
 .commander-stack { display: grid; gap: 8px; margin-top: 14px; }
-.commander-card { display: grid; grid-template-columns: 43px 1fr auto; align-items: center; gap: 9px; width: 100%; min-height: 66px; padding: 7px 8px; border: 1px solid var(--line); border-left: 4px solid var(--ash); color: var(--ink); background: var(--paper); text-align: left; cursor: pointer; transition: transform 160ms var(--ease-out), border-color 180ms var(--ease-out), background 180ms var(--ease-out); }
+.commander-card { display: grid; grid-template-columns: 60px 1fr auto; align-items: center; gap: 10px; width: 100%; min-height: 78px; padding: 6px 8px; border: 1px solid var(--line); border-left: 4px solid var(--ash); color: var(--ink); background: var(--paper); text-align: left; cursor: pointer; transition: transform 160ms var(--ease-out), border-color 180ms var(--ease-out), background 180ms var(--ease-out); }
 .commander-card:hover { transform: translateX(-2px); background: var(--cream); }
 .commander-card:active, .training-button:active, .answer-grid button:active, .result-button:active { transform: scale(0.97); }
 .commander-card.is-active { border-color: var(--navy); box-shadow: 0 1px 2px rgb(34 48 62 / 0.08); }
 .commander-lu-bu.is-active { border-left-color: var(--fire); }
 .commander-zhuge-liang.is-active { border-left-color: var(--silver); }
-.commander-card img { width: 35px; height: 42px; object-fit: contain; }
+.commander-portrait { display: grid; width: 54px; height: 64px; place-items: end center; overflow: hidden; border-bottom: 2px solid var(--ash); background: linear-gradient(160deg, var(--cream-deep), var(--paper)); }
+.commander-portrait img { width: 62px; height: 76px; object-fit: contain; object-position: center bottom; filter: saturate(0.92) contrast(1.05); }
+.commander-portrait-lu-bu { border-color: var(--fire); background: linear-gradient(160deg, #f8eee6, var(--paper)); }
+.commander-portrait-zhuge-liang { border-color: var(--silver); background: linear-gradient(160deg, #ebf0f2, var(--paper)); }
 .commander-copy { display: grid; gap: 2px; color: var(--ink-soft); font-family: var(--font-ui); font-size: 10.5px; line-height: 1.35; }
 .commander-name { color: var(--navy-deep); font-family: var(--font-display); font-size: 17px; font-weight: 700; }
 .troop-count { display: grid; min-width: 38px; text-align: right; color: var(--gold-ink); font-family: var(--font-ui); }
@@ -125,7 +128,7 @@ button { font: inherit; }
 
 @media (max-width: 820px) {
   .game-header { width: 100%; min-height: 72px; padding: 12px 14px; }.brand-mark-shell { width: 36px; height: 36px; }.brand-lockup h1 { font-size: 18px; }.header-rule { display: none; }.round-readout { font-size: 12px; }
-  .ledger-panel { top: auto; right: 0; bottom: 0; width: 100%; max-height: 218px; padding: 12px 14px; border-right: 0; border-bottom: 0; }.ledger-title { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 8px; }.ledger-title h2 { font-size: 18px; }.commander-stack { grid-template-columns: 1fr 1fr; margin-top: 8px; }.commander-card { min-height: 57px; grid-template-columns: 31px 1fr auto; gap: 5px; padding: 5px; }.commander-card img { width: 27px; height: 34px; }.commander-copy { font-size: 8px; }.commander-name { font-size: 14px; }.troop-count b { font-size: 14px; }.skill-card, .territory-list, .faction-legend, .training-button { display: none; }
+  .ledger-panel { top: auto; right: 0; bottom: 0; width: 100%; max-height: 232px; padding: 12px 14px; border-right: 0; border-bottom: 0; }.ledger-title { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 8px; }.ledger-title h2 { font-size: 18px; }.commander-stack { grid-template-columns: 1fr 1fr; margin-top: 8px; }.commander-card { min-height: 70px; grid-template-columns: 45px 1fr auto; gap: 5px; padding: 5px; }.commander-portrait { width: 40px; height: 54px; }.commander-portrait img { width: 48px; height: 62px; }.commander-copy { font-size: 8px; }.commander-name { font-size: 14px; }.troop-count b { font-size: 14px; }.skill-card, .territory-list, .faction-legend, .training-button { display: none; }
   .map-caption { bottom: 229px; left: 12px; max-width: calc(100vw - 24px); padding: 9px 10px; }.map-caption p { font-size: 12px; }.map-instruction { display: none; }
   .battle-key { top: 82px; left: 12px; padding: 7px 8px; }.battle-key small { display: none; }
   .duel-sheet, .result-sheet { width: min(600px, calc(100vw - 24px)); padding: 21px; }.answer-grid { grid-template-columns: 1fr; }.duel-sheet h2, .result-sheet h2 { font-size: 27px; }
