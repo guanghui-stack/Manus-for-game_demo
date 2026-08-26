@@ -10,6 +10,23 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script defer src="%VITE_ANALYTICS_ENDPOINT%/umami" data-website-id="%VITE_ANALYTICS_WEBSITE_ID%"></script>
+    <!--
+      Vite chỉ thay %VITE_*% khi biến môi trường tồn tại. Đặt thẻ script tĩnh nghĩa là
+      khi thiếu biến, trình duyệt đi tải đúng chuỗi "%VITE_ANALYTICS_ENDPOINT%/umami"
+      và nhận lỗi 400 kèm cảnh báo MIME trên mọi lần tải trang. Chèn bằng script để
+      analytics chỉ bật khi đã cấu hình thật.
+    -->
+    <script>
+      (function () {
+        var endpoint = "%VITE_ANALYTICS_ENDPOINT%";
+        var websiteId = "%VITE_ANALYTICS_WEBSITE_ID%";
+        if (!endpoint || endpoint.charAt(0) === "%") return;
+        var tag = document.createElement("script");
+        tag.defer = true;
+        tag.src = endpoint + "/umami";
+        tag.setAttribute("data-website-id", websiteId);
+        document.head.appendChild(tag);
+      })();
+    </script>
   </body>
 </html>

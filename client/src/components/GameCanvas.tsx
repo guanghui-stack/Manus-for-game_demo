@@ -10,6 +10,24 @@ const EMPTY: GameSnapshot = {
 };
 
 const formatClock = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+const ACCENT_HEX: Record<string, string> = { fire: "#c2591f", jade: "#54706a", silver: "#7d97ac", gold: "#b8862b", sky: "#6f8fa8" };
+
+/**
+ * Ảnh chân dung nằm trên hạ tầng lưu trữ của Manus và trả 500 ở mọi môi trường khác.
+ * Đổi sang con dấu vẽ sẵn thay vì để trình duyệt hiện ô ảnh vỡ.
+ */
+const sealDataUri = (name: string, accent: string) =>
+  `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 260"><rect x="6" y="6" width="188" height="248" fill="#fffdf9" stroke="${accent}" stroke-width="5"/><text x="100" y="138" text-anchor="middle" font-family="'Be Vietnam Pro',system-ui,sans-serif" font-size="21" font-weight="700" fill="${accent}">${name}</text></svg>`)}`;
+
+const usePortraitFallback = (name: string, accent: string) => (event: { currentTarget: HTMLImageElement }) => {
+  const image = event.currentTarget;
+  // Khoá theo tên tướng, không khoá theo phần tử: đổi tướng là đổi src, và một cờ
+  // dùng chung sẽ chặn luôn lần thay thế thứ hai.
+  if (image.dataset.sealedFor === name) return;
+  image.dataset.sealedFor = name;
+  image.src = sealDataUri(name, ACCENT_HEX[accent] ?? ACCENT_HEX.fire);
+};
+
 const terrainLabel: Record<string, string> = { plain: "Đồng", village: "Làng", forest: "Rừng", pass: "Ải", ford: "Bến", fortress: "Thành", academy: "Học", mountain: "Núi" };
 
 export default function GameCanvas() {
@@ -17,7 +35,7 @@ export default function GameCanvas() {
   const startedRef = useRef(false);
   const [state, setState] = useState<GameSnapshot>(EMPTY);
   const [item, setItem] = useState<{ itemId: string; focus: string; prompt: string; options: string[] } | null>(null);
-  const [passageItem, setPassageItem] = useState<{ itemId: string; prompt: string; options: string[] } | null>(null);
+  const [passageItem, setPassageItem] = useState<{ itemId: string; prompt: string; options: string[]; passageTitle: string; passageBody: string } | null>(null);
   const lastQuestionRef = useRef<string | null>(null);
   const lastPassageRef = useRef<string | null>(null);
   const nextItem = trpc.game.nextBoardItem.useMutation();
@@ -57,7 +75,7 @@ export default function GameCanvas() {
 
   const submitAnswer = (answerIndex: number) => {
     if (!item || gradeItem.isPending) return;
-    gradeItem.mutate({ itemId: item.itemId, answerIndex }, { onSuccess: (outcome) => send({ type: "answerResolved", correct: outcome.correct }), onError: () => send({ type: "answerResolved", correct: false }) });
+    gradeItem.mutate({ itemId: item.itemId, answerIndex }, { onSuccess: (outcome) => send({ type: "answerResolved", correct: outcome.correct, focus: item.focus }), onError: () => send({ type: "answerResolved", correct: false, focus: item.focus }) });
   };
   const submitPassageAnswer = (answerIndex: number) => {
     if (!passageItem || gradePassageItem.isPending) return;
@@ -70,7 +88,7 @@ export default function GameCanvas() {
 
     <aside className="ng-command" aria-label="Điều quân">
       <div className="ng-panel-head"><span className="ng-caption">Lệnh</span><div><p>Ngũ tướng</p><h2>Chọn người cầm quân</h2></div></div>
-      <div className="ng-general-grid">{GENERALS.map((general) => <button key={general.id} type="button" className={state.selectedGeneral === general.id ? "is-current" : ""} onClick={() => send({ type: "selectGeneral", generalId: general.id })}><img src={general.portrait} alt=""/><span><b>{general.name}</b><small>{general.role}</small></span></button>)}</div>
+      <div className="ng-general-grid">{GENERALS.map((general) => <button key={general.id} type="button" className={state.selectedGeneral === general.id ? "is-current" : ""} onClick={() => send({ type: "selectGeneral", generalId: general.id })}><img src={general.portrait} alt="" onError={usePortraitFallback(general.name, general.accent)}/><span><b>{general.name}</b><small>{general.role}</small></span></button>)}</div>
       <section className="ng-order"><p>Hồi lệnh của bạn</p><div className="ng-cooldown"><b>{state.bonusMoveSeconds > 0 ? `Xung phong ${state.bonusMoveSeconds.toFixed(1)}s` : state.playerCooldownLeft > 0 ? `${state.playerCooldownLeft.toFixed(1)}s` : "Sẵn sàng"}</b><span style={{ width: `${Math.min(100, state.playerCooldownLeft / 7 * 100)}%` }} /></div><small>Bot Lữ Bố: {state.botCooldownLeft > 0 ? `${state.botCooldownLeft.toFixed(1)}s` : "đang chọn nước"}</small></section>
       <section className="ng-selected"><p>Hex đang chọn</p><b>{chosen ? chosen.name : "Chọn ô trên quân đồ"}</b><span>{chosen ? `${terrainLabel[chosen.kind]} · ${chosen.pointValue} điểm · vây ${chosen.siegePlayer}/2` : ""}</span></section>
       <section className="ng-fallback"><p>Điểm đến trong tầm</p><div>{reachable.length ? reachable.map((tile) => <button type="button" key={tile.id} disabled={!canAct} onMouseEnter={() => send({ type: "hoverTile", tileId: tile.id })} onMouseLeave={() => send({ type: "hoverTile", tileId: null })} onClick={() => send({ type: "selectTile", tileId: tile.id })}>{tile.name}<small>{terrainLabel[tile.kind]}</small></button>) : <span>{canAct ? "Rê/chạm các hex sáng trên quân đồ." : "Chờ hồi lệnh để điều quân."}</span>}</div></section>
@@ -78,7 +96,7 @@ export default function GameCanvas() {
 
     <aside className="ng-ledger" aria-label="Sổ quân nhu">
       <div className="ng-panel-head"><span className="ng-caption">Sổ</span><div><p>Sổ quân nhu</p><h2>{state.playerGeneral.name}</h2></div></div>
-      <img className="ng-general-large" src={state.playerGeneral.portrait} alt={`Chân dung ${state.playerGeneral.name}`}/><p className="ng-role">{state.playerGeneral.role}</p><div className="ng-skill"><b>{state.playerGeneral.strength.split(":")[0]}</b><span>{state.playerGeneral.strength}</span><small>Giá: {state.playerGeneral.weakness}</small></div>
+      <img className="ng-general-large" src={state.playerGeneral.portrait} alt={`Chân dung ${state.playerGeneral.name}`} onError={usePortraitFallback(state.playerGeneral.name, state.playerGeneral.accent)}/><p className="ng-role">{state.playerGeneral.role}</p><div className="ng-skill"><b>{state.playerGeneral.strength.split(":")[0]}</b><span>{state.playerGeneral.strength}</span><small>Giá: {state.playerGeneral.weakness}</small></div>
       <div className="ng-terrain-legend"><p>Địa hình 61 ô</p><span>Đồng/Làng/Rừng: 1</span><span>Ải: 2</span><span>Thành trì: 3</span><span>Học cung hạ bậc đề</span></div>
       <div className="ng-mirror"><b>Đối thủ</b><span>{state.botGeneralName}</span><small>Lữ Bố không phải tướng chọn được.</small><button type="button" disabled={!state.canChallenge} onClick={() => send({ type: "requestPassage" })}>Thách đấu sinh tử</button><em>{state.challengeReason}</em></div>
     </aside>
@@ -89,7 +107,7 @@ export default function GameCanvas() {
     {state.pendingAction && <section className="ng-confirm" role="dialog" aria-modal="true"><p>Ra lệnh chiếm ô</p><h2>Xác nhận tiến vào {state.pendingAction.targetName}?</h2><div><span>{state.pendingAction.terrain}</span><b>{state.pendingAction.questionSeconds} giây</b><span>Dấu vây: {state.pendingAction.siegeCount}/2</span></div><small>Kỹ năng chỉ tác động bàn cờ. Trọng tài chấm câu học thuật độc lập.</small><footer><button type="button" onClick={() => send({ type: "cancelAction" })}>Quay lại</button><button type="button" onClick={() => send({ type: "confirmAction" })}>Mở câu chiếm ô</button></footer></section>}
 
     {state.mode === "question" && state.question && <section className="ng-question" aria-label="Câu chiếm ô"><header><span>{state.question.focus}</span><b>{state.question.secondsLeft}s</b></header>{item ? <><h2>{item.prompt}</h2><div>{item.options.map((option, index) => <button key={option} type="button" disabled={gradeItem.isPending} onClick={() => submitAnswer(index)}><i>{String.fromCharCode(65 + index)}</i>{option}</button>)}</div>{state.question.rerollsLeft > 0 && <button className="ng-reroll" type="button" onClick={() => send({ type: "rerollQuestion" })}>Đổi đề · còn {state.question.rerollsLeft} lần</button>}<small>Đáp án chỉ được trọng tài lưu và chấm. Kết quả không thay đổi band hay xếp hạng.</small></> : <p>Trọng tài đang phát câu hỏi…</p>}</section>}
-    {state.mode === "passage" && state.passage && <section className="ng-passage" aria-label="Passage sinh tử"><header><span>PASSAGE SINH TỬ · BÀN CỜ ĐÓNG BĂNG</span><b>{formatClock(state.passage.secondsLeft)}</b></header><div className="ng-passage-score"><span>Câu {state.passage.questionNumber}/{state.passage.totalQuestions}</span><span>Điểm lúc đóng băng {state.passage.pointsAtFreeze.player}:{state.passage.pointsAtFreeze.bot}</span></div>{passageItem ? <><h2>{passageItem.prompt}</h2><div className="ng-passage-options">{passageItem.options.map((option, index) => <button key={option} type="button" disabled={gradePassageItem.isPending} onClick={() => submitPassageAnswer(index)}><i>{String.fromCharCode(65 + index)}</i>{option}</button>)}</div><small>13 câu độc lập · tối đa 20 phút · kỹ năng và địa hình không sửa nội dung hay đáp án.</small></> : <p>Trọng tài đang phát passage…</p>}</section>}
+    {state.mode === "passage" && state.passage && <section className="ng-passage" aria-label="Passage sinh tử"><header><span>PASSAGE SINH TỬ · BÀN CỜ ĐÓNG BĂNG</span><b>{formatClock(state.passage.secondsLeft)}</b></header><div className="ng-passage-score"><span>Câu {state.passage.questionNumber}/{state.passage.totalQuestions}</span><span>Điểm lúc đóng băng {state.passage.pointsAtFreeze.player}:{state.passage.pointsAtFreeze.bot}</span></div>{passageItem ? <>{passageItem.passageBody ? <article className="ng-passage-body"><h3>{passageItem.passageTitle}</h3><p>{passageItem.passageBody}</p></article> : <p className="ng-passage-missing">Chưa nạp bài đọc “{passageItem.passageTitle}”. Mười ba câu dưới đây không trả lời được nếu thiếu bài — xem READING_SOURCE.md.</p>}<h2>{passageItem.prompt}</h2><div className="ng-passage-options">{passageItem.options.map((option, index) => <button key={option} type="button" disabled={gradePassageItem.isPending} onClick={() => submitPassageAnswer(index)}><i>{String.fromCharCode(65 + index)}</i>{option}</button>)}</div><small>13 câu độc lập · tối đa 20 phút · kỹ năng và địa hình không sửa nội dung hay đáp án.</small></> : <p>Trọng tài đang phát passage…</p>}</section>}
     {state.finished && <section className="ng-finish" role="dialog" aria-modal="true"><p>Quyết toán bàn cờ</p><h2>{state.finished.winner === "player" ? "Bạn giữ thế thượng phong" : state.finished.winner === "bot" ? "Lữ Bố chiếm ưu thế" : "Bàn cờ hòa"}</h2><span>{state.finished.reason}</span><button type="button" onClick={() => send({ type: "reset" })}>Dựng ván mới</button></section>}
   </div>;
 }

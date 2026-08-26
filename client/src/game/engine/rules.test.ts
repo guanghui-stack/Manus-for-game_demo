@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createBoard } from "@/game/content/board";
-import { answerWindowSeconds, canMoveTo, canTraverseRoute, cooldownSeconds, movementRange } from "@/game/engine/rules";
+import { answerWindowSeconds, canMoveTo, canTraverseRoute, cooldownSeconds, movementRange, replayBonusHexes } from "@/game/engine/rules";
 
 describe("Ngũ Tướng board engine", () => {
   it("creates 61 playable tiles, 30 mountains and exactly 75 board points", () => {
@@ -23,8 +23,18 @@ describe("Ngũ Tướng board engine", () => {
     expect(canMoveTo("ma-chao", { q: 0, r: 0 }, { q: 2, r: 1 }, 0)).toBe(false);
   });
 
-  it("keeps every board question on the fixed ten-second academic window", () => {
-    expect(answerWindowSeconds()).toBe(10);
+  it("gives every general the ten-second board window, plus Trieu Van's three", () => {
+    expect(answerWindowSeconds("zhang-fei")).toBe(10);
+    expect(answerWindowSeconds("guan-yu")).toBe(10);
+    expect(answerWindowSeconds("ma-chao")).toBe(10);
+    // Đơn kỵ đổi nhịp của câu bàn cờ, không đổi cách chấm — nằm trong mục 0.
+    expect(answerWindowSeconds("zhao-yun")).toBe(13);
+  });
+
+  it("gives only Hoang Trung the phuc ban territory bonus", () => {
+    expect(replayBonusHexes("huang-zhong")).toBe(2);
+    expect(replayBonusHexes("zhang-fei")).toBe(1);
+    expect(replayBonusHexes("zhao-yun")).toBe(1);
   });
 
   it("allows Ma Chao straight routes only through player or neutral intermediate tiles", () => {

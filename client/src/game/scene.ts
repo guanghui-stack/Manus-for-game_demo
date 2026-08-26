@@ -1,4 +1,7 @@
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
+// Bản ES6 của Babylon chỉ gắn Scene.prototype.pick khi module này được nạp.
+// Thiếu nó thì pickInfo luôn rỗng và không click được ô nào trên quân đồ.
+import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Shaders/default.vertex";
 import "@babylonjs/core/Shaders/default.fragment";
 import { Engine } from "@babylonjs/core/Engines/engine";
@@ -17,11 +20,13 @@ export async function createGameScene(engine: Engine, canvas: HTMLCanvasElement)
   const scene = new Scene(engine);
   scene.clearColor = new Color4(0.98, 0.965, 0.937, 1);
 
-  const camera = new ArcRotateCamera("tactical-camera", -Math.PI / 2.18, 0.82, 17.5, new Vector3(-1.1, 0, -1.2), scene);
-  camera.lowerRadiusLimit = 17.5;
-  camera.upperRadiusLimit = 17.5;
-  camera.lowerBetaLimit = 0.82;
-  camera.upperBetaLimit = 0.82;
+  // Bàn bán kính 5 trải tới x = +-8,2 và z = +-7,2. Khung cũ ngắm lệch trái và ở cự ly
+  // 17,5 nên rìa phải cùng hàng dưới của quân đồ bị cắt khỏi khung hình.
+  const camera = new ArcRotateCamera("tactical-camera", -Math.PI / 2, 0.78, 21, new Vector3(0, 0, -0.4), scene);
+  camera.lowerRadiusLimit = 21;
+  camera.upperRadiusLimit = 21;
+  camera.lowerBetaLimit = 0.78;
+  camera.upperBetaLimit = 0.78;
   camera.attachControl(canvas, true);
   camera.panningSensibility = 0;
   camera.wheelPrecision = 999999;
