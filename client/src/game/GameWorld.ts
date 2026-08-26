@@ -1,4 +1,4 @@
-import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { LinesMesh } from "@babylonjs/core/Meshes/linesMesh";
@@ -23,6 +23,15 @@ const COLORS = {
 };
 
 const TERRAIN_LABEL: Record<HexTileState["kind"], string> = { plain: "Đồng bằng", village: "Làng", forest: "Rừng", pass: "Ải", ford: "Bến sông", fortress: "Thành trì", academy: "Học cung", mountain: "Núi" };
+
+/** Mực đánh dấu lãnh thổ: player là lam mực, bot là đỏ son — viền vẽ quanh ô chiếm được. */
+const OWNERSHIP_INK = {
+  player: { tint: Color3.FromHexString("#2e5f8f"), edge: new Color4(0.18, 0.37, 0.56, 1) },
+  bot: { tint: Color3.FromHexString("#c2591f"), edge: new Color4(0.76, 0.35, 0.12, 1) },
+};
+/** Loé sáng khi vừa chiếm ô: viền cháy về trắng giấy rồi lắng lại màu mực. */
+const PULSE_FLASH = new Color4(1, 0.96, 0.86, 1);
+const PULSE_MS = 500;
 
 type PendingAction = { targetId: string; startedAt: number; questionSeed: number };
 
@@ -69,6 +78,9 @@ export class GameWorld {
   /** Phục bàn: dạng đề từng làm sai. Làm đúng lại đúng dạng đó thì Hoàng Trung mở rộng đất. */
   private missedFocuses = new Set<string>();
   private currentQuestionFocus: string | null = null;
+  /** Ô vừa chiếm được: tileId -> thời điểm bắt đầu loé viền. */
+  private capturePulses = new Map<string, number>();
+  private edgeOwner = new Map<string, "player" | "bot">();
 
   constructor(private readonly scene: Scene, _canvas: HTMLCanvasElement) {
     this.createPaperGround();
@@ -99,6 +111,7 @@ export class GameWorld {
     this.applyFog(remaining);
     this.expireSieges(elapsed);
     this.applyMaChaoDecay(elapsed);
+    this.updateCapturePulses(performance.now());
     if (this.mode === "question" && this.currentQuestion && performance.now() - this.questionOpenedAt > this.currentQuestion.secondsTotal * 1000) this.resolveAnswer(false);
     if (this.mode === "passage" && this.passage && performance.now() - this.passage.startedAt > 1_200_000) this.finalizePassage(true);
     // Trận đi đồng thời: bot không được đóng băng trong lúc người chơi làm câu, nếu không
@@ -256,6 +269,7 @@ export class GameWorld {
         this.addHistory("siege", "Phá kiên thành", `${tile.name} là kiên thành: cần thêm một câu đúng liên tiếp để chiếm.`); this.recordAction(tile.name, false, elapsed);
       } else {
         tile.owner = "player"; tile.siegePlayer = 0; tile.siegeBot = 0; tile.fortifiedBy = general.id === "guan-yu" ? "player" : null; this.playerTileId = tile.id; this.siegeExpires.delete(tile.id);
+        this.startCapturePulse(tile.id);
         if (general.id === "ma-chao") this.maChaoCapturedAt.set(tile.id, this.elapsedBoardSeconds());
         this.addHistory("capture", "Chiếm ô", `${general.name} giữ ${tile.name} sau ${elapsed}s. Giá trị ${tile.pointValue} điểm.`); this.recordAction(tile.name, true, elapsed, tile.pointValue);
         if (general.id === "huang-zhong" && correct && this.currentQuestionFocus && this.missedFocuses.has(this.currentQuestionFocus)) {
@@ -295,6 +309,7 @@ export class GameWorld {
       if (hexDistance({ q: from.q, r: from.r }, { q: tile.q, r: tile.r }) !== 1) continue;
       tile.owner = "player"; tile.siegePlayer = 0; tile.siegeBot = 0; tile.fortifiedBy = null;
       this.siegeExpires.delete(tile.id);
+      this.startCapturePulse(tile.id);
       taken.push(tile.name);
     }
     return taken;
@@ -332,7 +347,7 @@ export class GameWorld {
     const target = candidates.sort((a, b) => (a.owner === "player" ? -1 : 1) - (b.owner === "player" ? -1 : 1))[0];
     if (!target) { this.botCooldownUntil = this.elapsedBoardSeconds() + this.botAnswerSeconds() + cooldownSeconds(this.botTileCount(), this.botVillageCount()); return; }
     const botCorrect = (Math.floor(this.elapsedBoardSeconds() * 7) + target.q - target.r) % 4 !== 0;
-    if (botCorrect && !(target.fortifiedBy === "player" && target.siegeBot < 1)) { target.owner = "bot"; target.siegeBot = 0; target.fortifiedBy = null; this.siegeExpires.delete(target.id); this.botTileId = target.id; this.addHistory("bot", "Lữ Bố tiến quân", `Đối thủ phản chiếu chiếm ${target.name}.`); }
+    if (botCorrect && !(target.fortifiedBy === "player" && target.siegeBot < 1)) { target.owner = "bot"; target.siegeBot = 0; target.fortifiedBy = null; this.siegeExpires.delete(target.id); this.botTileId = target.id; this.startCapturePulse(target.id); this.addHistory("bot", "Lữ Bố tiến quân", `Đối thủ phản chiếu chiếm ${target.name}.`); }
     else { target.siegeBot += 1; this.siegeExpires.set(target.id, { ...(this.siegeExpires.get(target.id) ?? {}), bot: this.elapsedBoardSeconds() + GAME_CONSTANTS.siegeDecaySeconds }); this.addHistory("bot", target.fortifiedBy === "player" ? "Lữ Bố phá kiên" : "Lữ Bố vây ô", `${target.name} nhận dấu vây của đối thủ.`); }
     this.botCooldownUntil = this.elapsedBoardSeconds() + this.botAnswerSeconds() + cooldownSeconds(this.botTileCount(), this.botVillageCount()); this.lastBotDecisionAt = Math.floor(this.elapsedBoardSeconds()); this.placePortraits(); this.refreshAllTiles(); this.emit();
   }
@@ -374,8 +389,8 @@ export class GameWorld {
     // emissive lại bị trạng thái rê chuột, ô đang chọn và ô trong tầm ghi đè — nên nhìn
     // vào quân đồ không biết được ô nào của ai. Độ cao cũng là tín hiệu không phải màu,
     // đúng ràng buộc "không dùng màu làm tín hiệu duy nhất".
-    material.diffuseColor = tile.owner === "player" ? Color3.Lerp(terrain, COLORS.navy, 0.62)
-      : tile.owner === "bot" ? Color3.Lerp(terrain, COLORS.fire, 0.54)
+    material.diffuseColor = tile.owner === "player" ? Color3.Lerp(terrain, OWNERSHIP_INK.player.tint, 0.62)
+      : tile.owner === "bot" ? Color3.Lerp(terrain, OWNERSHIP_INK.bot.tint, 0.58)
       : terrain;
     material.alpha = tile.owner === "mountain" ? 0.55 : tile.lockedByFog ? 0.34 : 0.94;
     mesh.position.y = tile.kind === "mountain" ? -0.01 : tile.owner === "player" ? 0.2 : tile.owner === "bot" ? 0.11 : 0;
@@ -384,6 +399,50 @@ export class GameWorld {
     if (reachable.has(tile.id)) material.emissiveColor = COLORS.gold.scale(0.16);
     if (tile.id === this.hoveredTileId) material.emissiveColor = COLORS.gold.scale(0.5);
     if (tile.id === this.selectedTileId) material.emissiveColor = COLORS.fire.scale(0.5);
+    this.syncOwnershipEdges(tile, mesh);
+  }
+
+  /**
+   * Viền mực quanh ô chiếm được: dùng edges renderer để nét khớp tuyệt đối với cạnh
+   * lục giác thật của ô, đúng chất quân đồ vẽ tay. Ô mất chủ quyền thì tắt viền.
+   */
+  private syncOwnershipEdges(tile: HexTileState, mesh: Mesh): void {
+    const owner = tile.owner === "player" || tile.owner === "bot" ? tile.owner : null;
+    const applied = this.edgeOwner.get(tile.id);
+    if (!owner) {
+      if (applied !== undefined) { mesh.disableEdgesRendering(); this.edgeOwner.delete(tile.id); }
+      return;
+    }
+    if (applied !== owner) {
+      mesh.enableEdgesRendering();
+      mesh.edgesWidth = 12;
+      this.edgeOwner.set(tile.id, owner);
+    }
+    if (!this.capturePulses.has(tile.id)) mesh.edgesColor = OWNERSHIP_INK[owner].edge.clone();
+  }
+
+  private startCapturePulse(tileId: string): void { this.capturePulses.set(tileId, performance.now()); }
+
+  /** Viền ô vừa chiếm cháy trắng rồi lắng về màu mực trong PULSE_MS. */
+  private updateCapturePulses(now: number): void {
+    if (this.capturePulses.size === 0) return;
+    this.capturePulses.forEach((startedAt, tileId) => {
+      const mesh = this.tileMeshes.get(tileId);
+      const owner = this.edgeOwner.get(tileId) ?? "player";
+      if (!mesh || now - startedAt >= PULSE_MS) {
+        this.capturePulses.delete(tileId);
+        if (mesh) mesh.edgesColor = OWNERSHIP_INK[owner].edge.clone();
+        return;
+      }
+      const flash = Math.sin(Math.PI * ((now - startedAt) / PULSE_MS));
+      const base = OWNERSHIP_INK[owner].edge;
+      mesh.edgesColor = new Color4(
+        base.r + (PULSE_FLASH.r - base.r) * flash,
+        base.g + (PULSE_FLASH.g - base.g) * flash,
+        base.b + (PULSE_FLASH.b - base.b) * flash,
+        1
+      );
+    });
   }
 
   private applyFog(remaining: number): void {
@@ -425,7 +484,7 @@ export class GameWorld {
     this.battleArchive = [record, ...this.battleArchive].slice(0, 60); persistBattleArchive(this.battleArchive);
   }
   private finishBoard(): void { const player = this.points("player"); const bot = this.points("bot"); const winner = player === bot ? "draw" : player > bot ? "player" : "bot"; this.finished = { winner, reason: `Hết 10 phút: ${player} điểm so với ${bot} điểm.` }; this.addHistory("result", "Kết bàn cờ", this.finished.reason); this.emit(); }
-  private reset(): void { this.tiles = createBoard().map((tile) => ({ ...tile, q: tile.coord.q, r: tile.coord.r, ring: hexDistance(tile.coord, { q: 0, r: 0 }), siegePlayer: 0, siegeBot: 0, fortifiedBy: null, lockedByFog: false })); this.playerTileId = "-4,0"; this.botTileId = "4,0"; this.selectedTileId = null; this.hoveredTileId = null; this.mode = "board"; this.pendingAction = null; this.currentQuestion = null; this.passage = null; this.boardPausedAt = null; this.pausedDurationMs = 0; this.generalLocked = false; this.finished = null; this.siegeExpires.clear(); this.maChaoCapturedAt.clear(); this.bonusMoveUntil = 0; this.bonusMoveAvailable = false; this.questionUsedBonus = false; this.missedFocuses.clear(); this.currentQuestionFocus = null; this.lastBotDecisionAt = -1; this.boardStartedAt = performance.now(); this.boardTimePenaltySeconds = 0; this.playerCooldownUntil = 0; this.botCooldownUntil = 1.8; this.gameId = createGameId(); this.history = [{ id: 1, kind: "setup", label: "Ván mới", detail: "Bàn 61 ô đã được dựng lại." }]; this.historySequence = 1; this.refreshAllTiles(); this.placePortraits(); this.emit(); }
+  private reset(): void { this.tiles = createBoard().map((tile) => ({ ...tile, q: tile.coord.q, r: tile.coord.r, ring: hexDistance(tile.coord, { q: 0, r: 0 }), siegePlayer: 0, siegeBot: 0, fortifiedBy: null, lockedByFog: false })); this.playerTileId = "-4,0"; this.botTileId = "4,0"; this.selectedTileId = null; this.hoveredTileId = null; this.mode = "board"; this.pendingAction = null; this.currentQuestion = null; this.passage = null; this.boardPausedAt = null; this.pausedDurationMs = 0; this.generalLocked = false; this.finished = null; this.siegeExpires.clear(); this.maChaoCapturedAt.clear(); this.capturePulses.clear(); this.bonusMoveUntil = 0; this.bonusMoveAvailable = false; this.questionUsedBonus = false; this.missedFocuses.clear(); this.currentQuestionFocus = null; this.lastBotDecisionAt = -1; this.boardStartedAt = performance.now(); this.boardTimePenaltySeconds = 0; this.playerCooldownUntil = 0; this.botCooldownUntil = 1.8; this.gameId = createGameId(); this.history = [{ id: 1, kind: "setup", label: "Ván mới", detail: "Bàn 61 ô đã được dựng lại." }]; this.historySequence = 1; this.refreshAllTiles(); this.placePortraits(); this.emit(); }
 
   private emit(): void {
     const general = getGeneral(this.selectedGeneral); const playerTile = this.tileById(this.playerTileId);
