@@ -10,7 +10,8 @@
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "node scripts/check-skill-boundary.mjs && vitest run",
-    "db:push": "drizzle-kit generate && drizzle-kit migrate"
+    "db:push": "drizzle-kit generate && drizzle-kit migrate",
+    "bank:build": "node scripts/build-question-bank.mjs"
   },
   "dependencies": {
     "@babylonjs/core": "^9.22.2",
